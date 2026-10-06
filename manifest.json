@@ -6,7 +6,7 @@
     {
       "id": "dexterpw",
       "name": "Dexter.pw",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "filename": "providers/dexterpw.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
