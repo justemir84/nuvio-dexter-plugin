@@ -111,12 +111,19 @@ var require_extractor = __commonJS({
         const url = makeAbsoluteUrl(source.url);
         if (!url)
           return;
+
+        // Kalite verisini API'deki kaynak bilgilerinden dinamik olarak tespit ediyoruz:
+        let detectedQuality = source.quality || source.label || source.height || "Auto";
+        if (typeof detectedQuality === "number") {
+          detectedQuality = detectedQuality + "p";
+        }
+
         streams.push({
           name: "Dexter - " + (source.label || "Server"),
           title,
           url,
-          quality: "Auto",
-          isM3u8: true, 
+          quality: detectedQuality,
+          isM3u8: true,
           provider: "dexter",
           type: "hls"
         });
