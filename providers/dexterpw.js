@@ -53,9 +53,14 @@ var require_http = __commonJS({
   "src/dexterpw/http.js"(exports2, module2) {
     var BASE_URL = "https://dexter.pw";
     function fetchDetails2(tmdbId, mediaType, season, episode) {
-      let url = BASE_URL + "/api/" + mediaType + "/" + tmdbId + "?site=dexter";
-      if (mediaType === "tv" && season && episode) {
-        url += "&season=" + season + "&episode=" + episode;
+      let url;
+      if (mediaType === "tv") {
+        if (!season || !episode) {
+          return Promise.resolve({ sources: [] });
+        }
+        url = BASE_URL + "/api/tv/" + encodeURIComponent(tmdbId) + "/episode/" + encodeURIComponent(season) + "/" + encodeURIComponent(episode) + "?site=dexter";
+      } else {
+        url = BASE_URL + "/api/movie/" + encodeURIComponent(tmdbId) + "?site=dexter";
       }
       return fetch(url, {
         headers: {
@@ -63,6 +68,9 @@ var require_http = __commonJS({
           "Accept": "application/json"
         }
       }).then(function(res) {
+        if (!res.ok) {
+          throw new Error("Dexter API request failed: " + res.status);
+        }
         return res.json();
       });
     }
@@ -91,10 +99,18 @@ var require_extractor = __commonJS({
       if (!details || !Array.isArray(details.sources)) {
         return Promise.resolve([]);
       }
-      const title = details.title || "Video";
+      const episode = details.episode && typeof details.episode === "object" ? details.episode : null;
+      const show = details.show && typeof details.show === "object" ? details.show : null;
+      const episodeTitle = episode && (episode.title || episode.name);
+      const showTitle = show && (show.title || show.name);
+      const title = episodeTitle && showTitle ? showTitle + " - " + episodeTitle : episodeTitle || showTitle || details.title || "Video";
       const streams = [];
       details.sources.forEach(function(source) {
         if (!source || typeof source.url !== "string")
+          return;
+        const kind = String(source.kind || "").toLowerCase();
+        const isHls = kind === "hls" || kind === "m3u8" || /\.m3u8(?:$|[?#])/i.test(source.url);
+        if (kind === "embed" || kind === "player" || kind === "html" || !isHls)
           return;
         const url = makeAbsoluteUrl(source.url);
         if (!url)
@@ -104,7 +120,8 @@ var require_extractor = __commonJS({
           title,
           url,
           quality: "Auto",
-          provider: "dexter"
+          provider: "dexter",
+          type: "hls"
         });
       });
       return Promise.resolve(streams);
@@ -120,7 +137,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     console.log("[Dexter] Fetching " + mediaType + " " + tmdbId);
     const details = yield (0, import_http.fetchDetails)(tmdbId, mediaType, season, episode);
-    if (!details || !details.playable) {
+    if (!details || details.playable === false || !Array.isArray(details.sources)) {
       return [];
     }
     const streams = yield (0, import_extractor.extractStreams)(details);
