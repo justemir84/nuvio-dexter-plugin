@@ -79,6 +79,7 @@ var require_extractor = __commonJS({
   "src/dexterpw/extractor.js"(exports2, module2) {
     "use strict";
     var BASE_URL = "https://dexter.pw";
+
     function makeAbsoluteUrl(rawUrl) {
       if (typeof rawUrl !== "string" || !rawUrl.trim())
         return null;
@@ -91,44 +92,121 @@ var require_extractor = __commonJS({
         return BASE_URL + value;
       return BASE_URL + "/" + value;
     }
-    function extractStreams2(details) {
-      if (!details || !Array.isArray(details.sources)) {
-        return Promise.resolve([]);
-      }
-      const episode = details.episode && typeof details.episode === "object" ? details.episode : null;
-      const show = details.show && typeof details.show === "object" ? details.show : null;
-      const episodeTitle = episode && (episode.title || episode.name);
-      const showTitle = show && (show.title || show.name);
-      const title = episodeTitle && showTitle ? showTitle + " - " + episodeTitle : episodeTitle || showTitle || details.title || "Video";
-      const streams = [];
-      details.sources.forEach(function(source) {
-        if (!source || typeof source.url !== "string")
-          return;
-        const kind = String(source.kind || "").toLowerCase();
-        const isHls = kind === "hls" || kind === "m3u8" || /\.m3u8(?:$|[?#])/i.test(source.url);
-        if (kind === "embed" || kind === "player" || kind === "html" || !isHls)
-          return;
-        const url = makeAbsoluteUrl(source.url);
-        if (!url)
-          return;
 
-        // Kalite verisini API'deki kaynak bilgilerinden dinamik olarak tespit ediyoruz:
-        let detectedQuality = source.quality || source.label || source.height || "Auto";
-        if (typeof detectedQuality === "number") {
-          detectedQuality = detectedQuality + "p";
+    function resolveSubUrl(baseUrl, relativeUrl) {
+      if (!relativeUrl) return null;
+      relativeUrl = relativeUrl.trim();
+      if (/^https?:\/\//i.test(relativeUrl)) return relativeUrl;
+      if (relativeUrl.startsWith("//")) return "https:" + relativeUrl;
+      
+      try {
+        return new URL(relativeUrl, baseUrl).href;
+      } catch (e) {
+        if (relativeUrl.startsWith("/")) {
+          const match = baseUrl.match(/^(https?:\/\/[^\/]+)/i);
+          if (match) return match[1] + relativeUrl;
         }
+        const lastSlash = baseUrl.lastIndexOf("/");
+        if (lastSlash !== -1) {
+          return baseUrl.substring(0, lastSlash + 1) + relativeUrl;
+        }
+        return relativeUrl;
+      }
+    }
 
-        streams.push({
-          name: "Dexter - " + (source.label || "Server"),
-          title,
-          url,
-          quality: detectedQuality,
-          isM3u8: true,
-          provider: "dexter",
-          type: "hls"
-        });
+    function extractStreams2(details) {
+      return __async(this, null, function* () {
+        if (!details || !Array.isArray(details.sources)) {
+          return [];
+        }
+        const episode = details.episode && typeof details.episode === "object" ? details.episode : null;
+        const show = details.show && typeof details.show === "object" ? details.show : null;
+        const episodeTitle = episode && (episode.title || episode.name);
+        const showTitle = show && (show.title || show.name);
+        const title = episodeTitle && showTitle ? showTitle + " - " + episodeTitle : episodeTitle || showTitle || details.title || "Video";
+        const streams = [];
+
+        for (let i = 0; i < details.sources.length; i++) {
+          const source = details.sources[i];
+          if (!source || typeof source.url !== "string")
+            continue;
+          const kind = String(source.kind || "").toLowerCase();
+          const isHls = kind === "hls" || kind === "m3u8" || /\.m3u8(?:$|[?#])/i.test(source.url);
+          if (kind === "embed" || kind === "player" || kind === "html" || !isHls)
+            continue;
+          const mainUrl = makeAbsoluteUrl(source.url);
+          if (!mainUrl)
+            continue;
+
+          const serverLabel = source.label || "Server";
+
+          // 1. Ana Otomatik (Auto) Link
+          streams.push({
+            name: "Dexter - " + serverLabel + " (Auto)",
+            title,
+            url: mainUrl,
+            quality: "Auto",
+            isM3u8: true,
+            provider: "dexter",
+            type: "hls"
+          });
+
+          // 2. M3U8 Dosyasını indirip alt çözünürlükleri ayrıştırma
+          try {
+            const res = yield fetch(mainUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              }
+            });
+
+            if (res.ok) {
+              const text = yield res.text();
+              const lines = text.split(/\r?\n/);
+              for (let j = 0; j < lines.length; j++) {
+                const line = lines[j].trim();
+                if (line.startsWith("#EXT-X-STREAM-INF")) {
+                  let resolutionLabel = "SD";
+                  const resMatch = line.match(/RESOLUTION=\d+x(\d+)/i);
+                  if (resMatch) {
+                    const height = parseInt(resMatch[1], 10);
+                    if (height >= 2160) resolutionLabel = "4K";
+                    else if (height >= 1440) resolutionLabel = "2K";
+                    else if (height >= 1080) resolutionLabel = "1080p";
+                    else if (height >= 720) resolutionLabel = "720p";
+                    else if (height >= 480) resolutionLabel = "480p";
+                    else resolutionLabel = height + "p";
+                  }
+
+                  // Satırdan sonraki ilk yorum/boş olmayan satır URL'dir
+                  let k = j + 1;
+                  while (k < lines.length && (lines[k].trim() === "" || lines[k].trim().startsWith("#"))) {
+                    k++;
+                  }
+
+                  if (k < lines.length) {
+                    const rawSubUrl = lines[k].trim();
+                    const subUrl = resolveSubUrl(mainUrl, rawSubUrl);
+                    if (subUrl) {
+                      streams.push({
+                        name: "Dexter - " + resolutionLabel,
+                        title,
+                        url: subUrl,
+                        quality: resolutionLabel,
+                        isM3u8: true,
+                        provider: "dexter",
+                        type: "hls"
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.log("[Dexter] M3U8 parse hatasi: " + err);
+          }
+        }
+        return streams;
       });
-      return Promise.resolve(streams);
     }
     module2.exports = { extractStreams: extractStreams2 };
   }
