@@ -1,6 +1,6 @@
 {
   "name": "Dexter.pw Repository",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Dexter.pw kaynak sağlayıcısı deposu",
   "scrapers": [
     {
