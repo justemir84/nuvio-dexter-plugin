@@ -124,6 +124,24 @@ var require_extractor = __commonJS({
         const episodeTitle = episode && (episode.title || episode.name);
         const showTitle = show && (show.title || show.name);
         const title = episodeTitle && showTitle ? showTitle + " - " + episodeTitle : episodeTitle || showTitle || details.title || "Video";
+        
+        // --- API'den gelen harici altyazıları ayıklıyoruz ---
+        const subtitles = [];
+        const rawSubs = details.subtitles || details.tracks || [];
+        if (Array.isArray(rawSubs)) {
+          rawSubs.forEach(function(sub) {
+            if (sub && typeof sub.url === "string") {
+              const subUrl = makeAbsoluteUrl(sub.url);
+              if (subUrl) {
+                subtitles.push({
+                  url: subUrl,
+                  lang: sub.lang || sub.label || "Turkish"
+                });
+              }
+            }
+          });
+        }
+
         const streams = [];
 
         for (let i = 0; i < details.sources.length; i++) {
@@ -140,7 +158,7 @@ var require_extractor = __commonJS({
 
           const serverLabel = source.label || "Server";
 
-          // 1. Ana Otomatik (Auto) Link
+          // 1. Otomatik (Auto) Link
           streams.push({
             name: "Dexter - " + serverLabel + " (Auto)",
             title,
@@ -148,10 +166,11 @@ var require_extractor = __commonJS({
             quality: "Auto",
             isM3u8: true,
             provider: "dexter",
-            type: "hls"
+            type: "hls",
+            subtitles: subtitles
           });
 
-          // 2. M3U8 Dosyasını indirip alt çözünürlükleri ayrıştırma
+          // 2. M3U8 Ayrıştırma ve Çözünürlük Bazlı Linkler
           try {
             const res = yield fetch(mainUrl, {
               headers: {
@@ -177,7 +196,6 @@ var require_extractor = __commonJS({
                     else resolutionLabel = height + "p";
                   }
 
-                  // Satırdan sonraki ilk yorum/boş olmayan satır URL'dir
                   let k = j + 1;
                   while (k < lines.length && (lines[k].trim() === "" || lines[k].trim().startsWith("#"))) {
                     k++;
@@ -194,7 +212,8 @@ var require_extractor = __commonJS({
                         quality: resolutionLabel,
                         isM3u8: true,
                         provider: "dexter",
-                        type: "hls"
+                        type: "hls",
+                        subtitles: subtitles
                       });
                     }
                   }
