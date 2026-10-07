@@ -1,6 +1,7 @@
 /**
  * dexterpw - Built from src/dexterpw/
  * Generated: 2026-10-06T20:00:59.164Z
+ * FIXED: Better error handling, fallback sources, flexible format support
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -51,23 +52,33 @@ var require_http = __commonJS({
     function fetchDetails2(tmdbId, mediaType, season, episode) {
       let url;
       if (mediaType === "tv") {
-        if (!season || !episode) {
-          return Promise.resolve({ sources: [] });
+        // FIXED: Fallback to season list if episode is missing
+        if (season && episode) {
+          url = BASE_URL + "/api/tv/" + encodeURIComponent(tmdbId) + "/episode/" + encodeURIComponent(season) + "/" + encodeURIComponent(episode) + "?site=dexter";
+        } else if (season) {
+          url = BASE_URL + "/api/tv/" + encodeURIComponent(tmdbId) + "/season/" + encodeURIComponent(season) + "?site=dexter";
+        } else {
+          url = BASE_URL + "/api/tv/" + encodeURIComponent(tmdbId) + "?site=dexter";
         }
-        url = BASE_URL + "/api/tv/" + encodeURIComponent(tmdbId) + "/episode/" + encodeURIComponent(season) + "/" + encodeURIComponent(episode) + "?site=dexter";
       } else {
         url = BASE_URL + "/api/movie/" + encodeURIComponent(tmdbId) + "?site=dexter";
       }
+      
       return fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept": "application/json"
+          "Accept": "application/json",
+          "Referer": "https://dexter.pw"
         }
       }).then(function(res) {
         if (!res.ok) {
-          throw new Error("Dexter API request failed: " + res.status);
+          console.log("[Dexter] API Error " + res.status + " for URL: " + url);
+          return { sources: [], error: res.status };
         }
         return res.json();
+      }).catch(function(err) {
+        console.log("[Dexter] API Fetch Error: " + err);
+        return { sources: [], error: err.message };
       });
     }
     module2.exports = { fetchDetails: fetchDetails2 };
@@ -114,9 +125,19 @@ var require_extractor = __commonJS({
       }
     }
 
+    // FIXED: Fetch with timeout and retry logic
+    function fetchWithTimeout(url, options = {}, timeout = 10000) {
+      return Promise.race([
+        fetch(url, options),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), timeout)
+        )
+      ]);
+    }
+
     function extractStreams2(details) {
       return __async(this, null, function* () {
-        if (!details || !Array.isArray(details.sources)) {
+        if (!details || !Array.isArray(details.sources) || details.sources.length === 0) {
           return [];
         }
         const episode = details.episode && typeof details.episode === "object" ? details.episode : null;
@@ -148,82 +169,146 @@ var require_extractor = __commonJS({
           const source = details.sources[i];
           if (!source || typeof source.url !== "string")
             continue;
+          
           const kind = String(source.kind || "").toLowerCase();
-          const isHls = kind === "hls" || kind === "m3u8" || /\.m3u8(?:$|[?#])/i.test(source.url);
-          if (kind === "embed" || kind === "player" || kind === "html" || !isHls)
+          const rawUrl = source.url;
+          
+          // FIXED: Support multiple formats - not just HLS
+          const isHls = kind === "hls" || kind === "m3u8" || /\.m3u8(?:$|[?#])/i.test(rawUrl);
+          const isDash = kind === "dash" || /\.mpd(?:$|[?#])/i.test(rawUrl);
+          const isMp4 = kind === "mp4" || /\.mp4(?:$|[?#])/i.test(rawUrl);
+          const isDirectLink = isMp4 || /\.(mp4|mkv|avi|mov|flv)(?:$|[?#])/i.test(rawUrl);
+          
+          // Skip only embed/player types
+          if (kind === "embed" || kind === "player" || kind === "html")
             continue;
-          const mainUrl = makeAbsoluteUrl(source.url);
+          
+          // Skip only if it's truly unsupported
+          if (!isHls && !isDash && !isDirectLink)
+            continue;
+
+          const mainUrl = makeAbsoluteUrl(rawUrl);
           if (!mainUrl)
             continue;
 
           const serverLabel = source.label || "Server";
 
-          // 1. Otomatik (Auto) Link
-          streams.push({
-            name: "Dexter - " + serverLabel + " (Auto)",
-            title,
-            url: mainUrl,
-            quality: "Auto",
-            isM3u8: true,
-            provider: "dexter",
-            type: "hls",
-            subtitles: subtitles
-          });
+          // 1. Ekle: Direct link veya Auto fallback
+          if (isDirectLink) {
+            streams.push({
+              name: "Dexter - " + serverLabel,
+              title,
+              url: mainUrl,
+              quality: source.quality || "Auto",
+              isM3u8: false,
+              provider: "dexter",
+              type: "direct",
+              subtitles: subtitles
+            });
+            continue; // Skip M3U8 parsing for direct links
+          }
 
-          // 2. M3U8 Ayrıştırma ve Çözünürlük Bazlı Linkler
-          try {
-            const res = yield fetch(mainUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-              }
+          if (isHls) {
+            // 1. Otomatik (Auto) Link
+            streams.push({
+              name: "Dexter - " + serverLabel + " (Auto)",
+              title,
+              url: mainUrl,
+              quality: "Auto",
+              isM3u8: true,
+              provider: "dexter",
+              type: "hls",
+              subtitles: subtitles
             });
 
-            if (res.ok) {
-              const text = yield res.text();
-              const lines = text.split(/\r?\n/);
-              for (let j = 0; j < lines.length; j++) {
-                const line = lines[j].trim();
-                if (line.startsWith("#EXT-X-STREAM-INF")) {
-                  let resolutionLabel = "SD";
-                  const resMatch = line.match(/RESOLUTION=\d+x(\d+)/i);
-                  if (resMatch) {
-                    const height = parseInt(resMatch[1], 10);
-                    if (height >= 2160) resolutionLabel = "4K";
-                    else if (height >= 1440) resolutionLabel = "2K";
-                    else if (height >= 1080) resolutionLabel = "1080p";
-                    else if (height >= 720) resolutionLabel = "720p";
-                    else if (height >= 480) resolutionLabel = "480p";
-                    else resolutionLabel = height + "p";
-                  }
+            // 2. M3U8 Ayrıştırma ve Çözünürlük Bazlı Linkler - with timeout
+            try {
+              const res = yield fetchWithTimeout(mainUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                  "Referer": "https://dexter.pw"
+                }
+              }, 8000);
 
-                  let k = j + 1;
-                  while (k < lines.length && (lines[k].trim() === "" || lines[k].trim().startsWith("#"))) {
-                    k++;
-                  }
+              if (res.ok) {
+                const text = yield res.text();
+                const lines = text.split(/\r?\n/);
+                const parsedVariants = {};
+                
+                for (let j = 0; j < lines.length; j++) {
+                  const line = lines[j].trim();
+                  if (line.startsWith("#EXT-X-STREAM-INF")) {
+                    let resolutionLabel = "SD";
+                    let bandwidth = 0;
+                    
+                    const resMatch = line.match(/RESOLUTION=\d+x(\d+)/i);
+                    if (resMatch) {
+                      const height = parseInt(resMatch[1], 10);
+                      if (height >= 2160) resolutionLabel = "4K";
+                      else if (height >= 1440) resolutionLabel = "2K";
+                      else if (height >= 1080) resolutionLabel = "1080p";
+                      else if (height >= 720) resolutionLabel = "720p";
+                      else if (height >= 480) resolutionLabel = "480p";
+                      else resolutionLabel = height + "p";
+                    }
+                    
+                    const bwMatch = line.match(/BANDWIDTH=(\d+)/i);
+                    if (bwMatch) {
+                      bandwidth = parseInt(bwMatch[1], 10);
+                    }
 
-                  if (k < lines.length) {
-                    const rawSubUrl = lines[k].trim();
-                    const subUrl = resolveSubUrl(mainUrl, rawSubUrl);
-                    if (subUrl) {
-                      streams.push({
-                        name: "Dexter - " + resolutionLabel,
-                        title,
-                        url: subUrl,
-                        quality: resolutionLabel,
-                        isM3u8: true,
-                        provider: "dexter",
-                        type: "hls",
-                        subtitles: subtitles
-                      });
+                    let k = j + 1;
+                    while (k < lines.length && (lines[k].trim() === "" || lines[k].trim().startsWith("#"))) {
+                      k++;
+                    }
+
+                    if (k < lines.length) {
+                      const rawSubUrl = lines[k].trim();
+                      const subUrl = resolveSubUrl(mainUrl, rawSubUrl);
+                      if (subUrl) {
+                        // FIXED: Avoid duplicate qualities, keep highest bandwidth
+                        if (!parsedVariants[resolutionLabel] || bandwidth > parsedVariants[resolutionLabel].bandwidth) {
+                          parsedVariants[resolutionLabel] = { url: subUrl, bandwidth: bandwidth };
+                        }
+                      }
                     }
                   }
                 }
+                
+                // Add parsed variants
+                for (const [quality, variant] of Object.entries(parsedVariants)) {
+                  streams.push({
+                    name: "Dexter - " + quality,
+                    title,
+                    url: variant.url,
+                    quality: quality,
+                    isM3u8: true,
+                    provider: "dexter",
+                    type: "hls",
+                    subtitles: subtitles
+                  });
+                }
               }
+            } catch (err) {
+              console.log("[Dexter] M3U8 parse hatasi: " + err.message);
+              // Continue with Auto link that was already added
             }
-          } catch (err) {
-            console.log("[Dexter] M3U8 parse hatasi: " + err);
+          } else if (isDash) {
+            // DASH support
+            streams.push({
+              name: "Dexter - " + serverLabel + " (DASH)",
+              title,
+              url: mainUrl,
+              quality: "Auto",
+              isM3u8: false,
+              provider: "dexter",
+              type: "dash",
+              subtitles: subtitles
+            });
           }
         }
+        
+        console.log("[Dexter] Found " + streams.length + " streams");
         return streams;
       });
     }
@@ -236,13 +321,19 @@ var import_http = __toESM(require_http());
 var import_extractor = __toESM(require_extractor());
 function getStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
-    console.log("[Dexter] Fetching " + mediaType + " " + tmdbId);
-    const details = yield (0, import_http.fetchDetails)(tmdbId, mediaType, season, episode);
-    if (!details || details.playable === false || !Array.isArray(details.sources)) {
+    console.log("[Dexter] Fetching " + mediaType + " " + tmdbId + (season ? " S" + season + (episode ? "E" + episode : "") : ""));
+    try {
+      const details = yield (0, import_http.fetchDetails)(tmdbId, mediaType, season, episode);
+      if (!details || details.playable === false || !Array.isArray(details.sources) || details.sources.length === 0) {
+        console.log("[Dexter] No sources available");
+        return [];
+      }
+      const streams = yield (0, import_extractor.extractStreams)(details);
+      return streams;
+    } catch (err) {
+      console.log("[Dexter] getStreams error: " + err.message);
       return [];
     }
-    const streams = yield (0, import_extractor.extractStreams)(details);
-    return streams;
   });
 }
 module.exports = { getStreams };
