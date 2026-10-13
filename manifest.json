@@ -1,13 +1,21 @@
 {
-  "name": "Dexter.pw Repository",
-  "version": "1.0.7",
-  "description": "Dexter.pw kaynak sağlayıcısı deposu",
+  "name": "Multi Provider Repository",
+  "version": "1.1.0",
+  "description": "Dexter.pw ve IDLIX kaynak sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
       "name": "Dexter.pw",
       "version": "1.0.7",
       "filename": "providers/dexterpw.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true
+    },
+    {
+      "id": "idlix",
+      "name": "IDLIX",
+      "version": "1.0.0",
+      "filename": "providers/idlix.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
     }
