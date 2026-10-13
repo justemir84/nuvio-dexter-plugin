@@ -1,7 +1,7 @@
 /**
  * dexterpw - Built from src/dexterpw/
  * Generated: 2026-10-06T20:00:59.164Z
- * FIXED: Better error handling, fallback sources, flexible format support
+ * UPDATED: API timeout+retry, Turkish subtitle header, webm support, timer cleanup
  */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -49,10 +49,28 @@ var __async = (__this, __arguments, generator) => {
 var require_http = __commonJS({
   "src/dexterpw/http.js"(exports2, module2) {
     var BASE_URL = "https://dexter.pw";
-    function fetchDetails2(tmdbId, mediaType, season, episode) {
-      let url;
+    var REQUEST_TIMEOUT = 12000;
+
+    // Timeout wrapper; timer'i temizler ve timeout'ta promise'i reject eder
+    function fetchWithTimeout(url, options, timeout) {
+      timeout = timeout || REQUEST_TIMEOUT;
+      var timer = null;
+      var timeoutPromise = new Promise(function(_, reject) {
+        timer = setTimeout(function() { reject(new Error("API Timeout")); }, timeout);
+      });
+      return Promise.race([fetch(url, options), timeoutPromise]).then(function(res) {
+        if (timer) clearTimeout(timer);
+        return res;
+      }).catch(function(err) {
+        if (timer) clearTimeout(timer);
+        throw err;
+      });
+    }
+
+    function fetchDetails2(tmdbId, mediaType, season, episode, _retry) {
+      _retry = _retry || 0;
+      var url;
       if (mediaType === "tv") {
-        // FIXED: Fallback to season list if episode is missing
         if (season && episode) {
           url = BASE_URL + "/api/tv/" + encodeURIComponent(tmdbId) + "/episode/" + encodeURIComponent(season) + "/" + encodeURIComponent(episode) + "?site=dexter";
         } else if (season) {
@@ -63,11 +81,12 @@ var require_http = __commonJS({
       } else {
         url = BASE_URL + "/api/movie/" + encodeURIComponent(tmdbId) + "?site=dexter";
       }
-      
-      return fetch(url, {
+
+      return fetchWithTimeout(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           "Accept": "application/json",
+          "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
           "Referer": "https://dexter.pw"
         }
       }).then(function(res) {
@@ -77,6 +96,11 @@ var require_http = __commonJS({
         }
         return res.json();
       }).catch(function(err) {
+        // Ag hatasi/timeout icin bir kez daha dene
+        if (_retry < 1) {
+          console.log("[Dexter] API retry (" + (_retry + 1) + "): " + err.message);
+          return fetchDetails2(tmdbId, mediaType, season, episode, _retry + 1);
+        }
         console.log("[Dexter] API Fetch Error: " + err);
         return { sources: [], error: err.message };
       });
@@ -90,6 +114,7 @@ var require_extractor = __commonJS({
   "src/dexterpw/extractor.js"(exports2, module2) {
     "use strict";
     var BASE_URL = "https://dexter.pw";
+    var M3U8_TIMEOUT = 8000;
 
     function makeAbsoluteUrl(rawUrl) {
       if (typeof rawUrl !== "string" || !rawUrl.trim())
@@ -109,7 +134,7 @@ var require_extractor = __commonJS({
       relativeUrl = relativeUrl.trim();
       if (/^https?:\/\//i.test(relativeUrl)) return relativeUrl;
       if (relativeUrl.startsWith("//")) return "https:" + relativeUrl;
-      
+
       try {
         return new URL(relativeUrl, baseUrl).href;
       } catch (e) {
@@ -125,14 +150,20 @@ var require_extractor = __commonJS({
       }
     }
 
-    // FIXED: Fetch with timeout and retry logic
-    function fetchWithTimeout(url, options = {}, timeout = 10000) {
-      return Promise.race([
-        fetch(url, options),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), timeout)
-        )
-      ]);
+    // FIXED: Fetch with timeout - artik timer temizleniyor
+    function fetchWithTimeout(url, options, timeout) {
+      timeout = timeout || M3U8_TIMEOUT;
+      var timer = null;
+      var timeoutPromise = new Promise(function(_, reject) {
+        timer = setTimeout(function() { reject(new Error("Timeout")); }, timeout);
+      });
+      return Promise.race([fetch(url, options || {}), timeoutPromise]).then(function(res) {
+        if (timer) clearTimeout(timer);
+        return res;
+      }).catch(function(err) {
+        if (timer) clearTimeout(timer);
+        throw err;
+      });
     }
 
     function extractStreams2(details) {
@@ -145,8 +176,8 @@ var require_extractor = __commonJS({
         const episodeTitle = episode && (episode.title || episode.name);
         const showTitle = show && (show.title || show.name);
         const title = episodeTitle && showTitle ? showTitle + " - " + episodeTitle : episodeTitle || showTitle || details.title || "Video";
-        
-        // --- API'den gelen harici altyazıları ayıklıyoruz ---
+
+        // --- API'den gelen harici altyazilari ayikliyoruz ---
         const subtitles = [];
         const rawSubs = details.subtitles || details.tracks || [];
         if (Array.isArray(rawSubs)) {
@@ -169,21 +200,19 @@ var require_extractor = __commonJS({
           const source = details.sources[i];
           if (!source || typeof source.url !== "string")
             continue;
-          
+
           const kind = String(source.kind || "").toLowerCase();
           const rawUrl = source.url;
-          
-          // FIXED: Support multiple formats - not just HLS
+
+          // FIXED: Desteklenen formatlar (webm dahil)
           const isHls = kind === "hls" || kind === "m3u8" || /\.m3u8(?:$|[?#])/i.test(rawUrl);
           const isDash = kind === "dash" || /\.mpd(?:$|[?#])/i.test(rawUrl);
           const isMp4 = kind === "mp4" || /\.mp4(?:$|[?#])/i.test(rawUrl);
-          const isDirectLink = isMp4 || /\.(mp4|mkv|avi|mov|flv)(?:$|[?#])/i.test(rawUrl);
-          
-          // Skip only embed/player types
+          const isDirectLink = isMp4 || /\.(mp4|mkv|avi|mov|flv|webm)(?:$|[?#])/i.test(rawUrl);
+
           if (kind === "embed" || kind === "player" || kind === "html")
             continue;
-          
-          // Skip only if it's truly unsupported
+
           if (!isHls && !isDash && !isDirectLink)
             continue;
 
@@ -193,7 +222,6 @@ var require_extractor = __commonJS({
 
           const serverLabel = source.label || "Server";
 
-          // 1. Ekle: Direct link veya Auto fallback
           if (isDirectLink) {
             streams.push({
               name: "Dexter - " + serverLabel,
@@ -205,11 +233,10 @@ var require_extractor = __commonJS({
               type: "direct",
               subtitles: subtitles
             });
-            continue; // Skip M3U8 parsing for direct links
+            continue;
           }
 
           if (isHls) {
-            // 1. Otomatik (Auto) Link
             streams.push({
               name: "Dexter - " + serverLabel + " (Auto)",
               title,
@@ -221,26 +248,25 @@ var require_extractor = __commonJS({
               subtitles: subtitles
             });
 
-            // 2. M3U8 Ayrıştırma ve Çözünürlük Bazlı Linkler - with timeout
             try {
               const res = yield fetchWithTimeout(mainUrl, {
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                   "Referer": "https://dexter.pw"
                 }
-              }, 8000);
+              }, M3U8_TIMEOUT);
 
               if (res.ok) {
                 const text = yield res.text();
                 const lines = text.split(/\r?\n/);
                 const parsedVariants = {};
-                
+
                 for (let j = 0; j < lines.length; j++) {
                   const line = lines[j].trim();
                   if (line.startsWith("#EXT-X-STREAM-INF")) {
                     let resolutionLabel = "SD";
                     let bandwidth = 0;
-                    
+
                     const resMatch = line.match(/RESOLUTION=\d+x(\d+)/i);
                     if (resMatch) {
                       const height = parseInt(resMatch[1], 10);
@@ -251,7 +277,7 @@ var require_extractor = __commonJS({
                       else if (height >= 480) resolutionLabel = "480p";
                       else resolutionLabel = height + "p";
                     }
-                    
+
                     const bwMatch = line.match(/BANDWIDTH=(\d+)/i);
                     if (bwMatch) {
                       bandwidth = parseInt(bwMatch[1], 10);
@@ -266,7 +292,6 @@ var require_extractor = __commonJS({
                       const rawSubUrl = lines[k].trim();
                       const subUrl = resolveSubUrl(mainUrl, rawSubUrl);
                       if (subUrl) {
-                        // FIXED: Avoid duplicate qualities, keep highest bandwidth
                         if (!parsedVariants[resolutionLabel] || bandwidth > parsedVariants[resolutionLabel].bandwidth) {
                           parsedVariants[resolutionLabel] = { url: subUrl, bandwidth: bandwidth };
                         }
@@ -274,8 +299,7 @@ var require_extractor = __commonJS({
                     }
                   }
                 }
-                
-                // Add parsed variants
+
                 for (const [quality, variant] of Object.entries(parsedVariants)) {
                   streams.push({
                     name: "Dexter - " + quality,
@@ -291,10 +315,8 @@ var require_extractor = __commonJS({
               }
             } catch (err) {
               console.log("[Dexter] M3U8 parse hatasi: " + err.message);
-              // Continue with Auto link that was already added
             }
           } else if (isDash) {
-            // DASH support
             streams.push({
               name: "Dexter - " + serverLabel + " (DASH)",
               title,
@@ -307,7 +329,7 @@ var require_extractor = __commonJS({
             });
           }
         }
-        
+
         console.log("[Dexter] Found " + streams.length + " streams");
         return streams;
       });
