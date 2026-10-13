@@ -1,12 +1,12 @@
 {
   "name": "Dexter.pw Repository",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Dexter.pw kaynak sağlayıcısı deposu",
   "scrapers": [
     {
       "id": "dexterpw",
       "name": "Dexter.pw",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "filename": "providers/dexterpw.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
