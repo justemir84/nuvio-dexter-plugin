@@ -273,23 +273,28 @@ function getStreams(tmdbId, mediaType, season, episode) {
     try {
       // Read setting from global Nuvio settings (fallback to empty)
       function readCfClearance() {
-        // 1) globalThis.nuvio.scraperSettings (modern Nuvio)
+        // 1) modern Nuvio: globalThis.SCRAPER_SETTINGS
         try {
-          if (typeof globalThis !== "undefined" && globalThis.nuvio && globalThis.nuvio.scraperSettings) {
-            var v = globalThis.nuvio.scraperSettings.cf_clearance_cookie;
-            if (v) return v;
+          if (typeof globalThis !== "undefined" && globalThis.SCRAPER_SETTINGS && globalThis.SCRAPER_SETTINGS.cf_clearance_cookie) {
+            return String(globalThis.SCRAPER_SETTINGS.cf_clearance_cookie).trim();
           }
         } catch (e) {}
 
-        // 2) global.nuvio.scraperSettings (eski Nuvio)
+        // 2) global.SCRAPER_SETTINGS
         try {
-          if (typeof global !== "undefined" && global.nuvio && global.nuvio.scraperSettings) {
-            var v2 = global.nuvio.scraperSettings.cf_clearance_cookie;
-            if (v2) return v2;
+          if (typeof global !== "undefined" && global.SCRAPER_SETTINGS && global.SCRAPER_SETTINGS.cf_clearance_cookie) {
+            return String(global.SCRAPER_SETTINGS.cf_clearance_cookie).trim();
           }
         } catch (e) {}
 
-        // 3) Environment variable fallback (test için)
+        // 3) window.SCRAPER_SETTINGS (test ortamı)
+        try {
+          if (typeof window !== "undefined" && window.SCRAPER_SETTINGS && window.SCRAPER_SETTINGS.cf_clearance_cookie) {
+            return String(window.SCRAPER_SETTINGS.cf_clearance_cookie).trim();
+          }
+        } catch (e) {}
+
+        // 4) environment variable (test fallback)
         try {
           if (typeof process !== "undefined" && process.env && process.env.IDLIX_CF_CLEARANCE) {
             return process.env.IDLIX_CF_CLEARANCE;
