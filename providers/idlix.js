@@ -86,7 +86,8 @@ var require_http = __commonJS({
         "User-Agent": UA,
         "Accept": "application/json, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer": BASE_URL + "/"
+        "Referer": BASE_URL + "/",
+        "Cookie": "cf_clearance=NxjUYEljs1mxws6ALm4pURquqaCWNABIeta2ERuq1T8-1791963963-1.2.1.1-3.aEvk1t_9IXhhrg6cX_jXgLAbQcnaUprSNOb9DaG6SUGmjTPBHhax7eQD9mqXMtPdvRSVnnqDjWtt8wZg0HoiTr1EcGdIDdU9c7G7V0Lug_G5a.Ph0tcllpy21_wzYNbbTEbKKrjBvDOpinSmUAk3fAx1MYIQFp_2ian9qQU3oMDoJlFniGIfoCqliw8vJP2nPHuHS1ahegQfNME6GEhG.RmWJQy4_oUaUjQG5tpd.TfxNMw.bMRG8T6xHWCeF9irwXZq3iL8AlmKSSEk3445h0qeLhiAqEHlLvX1yhBNVG.Y8rePwo.iDRHn.eqN3lnqEt7hRX1VNiB087RDKlSbre.ouKH6y3ypUByEYOg6s"
       };
     }
 
