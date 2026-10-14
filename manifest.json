@@ -14,7 +14,7 @@
     {
       "id": "idlix",
       "name": "IDLIX",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/idlix.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true
