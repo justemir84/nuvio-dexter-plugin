@@ -1,6 +1,6 @@
 {
   "name": "Multi Provider Repository",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Dexter.pw ve IDLIX kaynak sağlayıcıları",
   "scrapers": [
     {
@@ -14,10 +14,19 @@
     {
       "id": "idlix",
       "name": "IDLIX",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "filename": "providers/idlix.js",
       "supportedTypes": ["movie", "tv"],
-      "enabled": true
+      "enabled": true,
+      "settings": [
+        {
+          "key": "cf_clearance_cookie",
+          "label": "IDLIX cf_clearance Cookie",
+          "description": "IDLIX sitesine erişmek için gerekli olan Cloudflare çerezini buraya yapıştırın.",
+          "type": "text", 
+          "default": ""
+        }
+      ]
     }
   ]
 }
