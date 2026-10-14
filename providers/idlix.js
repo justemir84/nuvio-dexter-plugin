@@ -81,61 +81,61 @@ var require_http = __commonJS({
       });
     }
 
-    function baseHeaders() {
-      return {
+    // Updated: accept optional cf_clearance value and include Cookie header when present
+    function baseHeaders(cf_clearance) {
+      var headers = {
         "User-Agent": UA,
         "Accept": "application/json, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer": BASE_URL + "/",
-        "Cookie": "cf_clearance=NxjUYEljs1mxws6ALm4pURquqaCWNABIeta2ERuq1T8-1791963963-1.2.1.1-3.aEvk1t_9IXhhrg6cX_jXgLAbQcnaUprSNOb9DaG6SUGmjTPBHhax7eQD9mqXMtPdvRSVnnqDjWtt8wZg0HoiTr1EcGdIDdU9c7G7V0Lug_G5a.Ph0tcllpy21_wzYNbbTEbKKrjBvDOpinSmUAk3fAx1MYIQFp_2ian9qQU3oMDoJlFniGIfoCqliw8vJP2nPHuHS1ahegQfNME6GEhG.RmWJQy4_oUaUjQG5tpd.TfxNMw.bMRG8T6xHWCeF9irwXZq3iL8AlmKSSEk3445h0qeLhiAqEHlLvX1yhBNVG.Y8rePwo.iDRHn.eqN3lnqEt7hRX1VNiB087RDKlSbre.ouKH6y3ypUByEYOg6s"
+        "Referer": BASE_URL + "/"
       };
+      if (cf_clearance) {
+        headers["Cookie"] = "cf_clearance=" + cf_clearance;
+      }
+      return headers;
     }
 
-    function search(title) {
+    function search(title, cf_clearance) {
       var url = BASE_URL + "/api/search?q=" + encodeURIComponent(title);
-      return fetchWithTimeout(url, { headers: baseHeaders() }).then(function(r) {
+      return fetchWithTimeout(url, { headers: baseHeaders(cf_clearance) }).then(function(r) {
         if (!r.ok) throw new Error("Search " + r.status);
         return r.json();
       });
     }
 
-    function getSeries(slug) {
+    function getSeries(slug, cf_clearance) {
       var url = BASE_URL + "/api/series/" + encodeURIComponent(slug);
-      return fetchWithTimeout(url, { headers: baseHeaders() }).then(function(r) {
+      return fetchWithTimeout(url, { headers: baseHeaders(cf_clearance) }).then(function(r) {
         if (!r.ok) throw new Error("Series " + r.status);
         return r.json();
       });
     }
 
-    function getSeriesSeason(slug, seasonNumber) {
+    function getSeriesSeason(slug, seasonNumber, cf_clearance) {
       var url = BASE_URL + "/api/series/" + encodeURIComponent(slug) + "/season/" + encodeURIComponent(seasonNumber);
-      return fetchWithTimeout(url, { headers: baseHeaders() }).then(function(r) {
+      return fetchWithTimeout(url, { headers: baseHeaders(cf_clearance) }).then(function(r) {
         if (!r.ok) throw new Error("Season " + r.status);
         return r.json();
       });
     }
 
-    function getPlayInfo(kind, uuid) {
+    function getPlayInfo(kind, uuid, cf_clearance) {
       // kind: "movie" | "episode"
       var url = BASE_URL + "/api/watch/play-info/" + kind + "/" + encodeURIComponent(uuid);
-      return fetchWithTimeout(url, { headers: baseHeaders() }).then(function(r) {
+      return fetchWithTimeout(url, { headers: baseHeaders(cf_clearance) }).then(function(r) {
         if (!r.ok) throw new Error("PlayInfo " + r.status);
         return r.json();
       });
     }
 
-    function claim(gateToken) {
+    function claim(gateToken, cf_clearance) {
       var url = BASE_URL + "/api/watch/session/claim";
+      var headers = baseHeaders(cf_clearance);
+      headers["Content-Type"] = "application/json";
+      headers["Origin"] = BASE_URL;
       var opts = {
         method: "POST",
-        headers: {
-          "User-Agent": UA,
-          "Content-Type": "application/json",
-          "Accept": "application/json, */*",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Origin": BASE_URL,
-          "Referer": BASE_URL + "/"
-        },
+        headers: headers,
         body: JSON.stringify({ gateToken: gateToken })
       };
       return fetchWithTimeout(url, opts).then(function(r) {
@@ -144,16 +144,13 @@ var require_http = __commonJS({
       });
     }
 
-    function redeem(redeemUrl, claimToken) {
+    function redeem(redeemUrl, claimToken, cf_clearance) {
+      var headers = baseHeaders(cf_clearance);
+      headers["Content-Type"] = "application/json";
+      headers["Origin"] = BASE_URL;
       var opts = {
         method: "POST",
-        headers: {
-          "User-Agent": UA,
-          "Content-Type": "application/json",
-          "Accept": "application/json, */*",
-          "Origin": BASE_URL,
-          "Referer": BASE_URL + "/"
-        },
+        headers: headers,
         body: JSON.stringify({ claim: claimToken, mode: "browser" })
       };
       return fetchWithTimeout(redeemUrl, opts).then(function(r) {
@@ -274,13 +271,21 @@ function getStreams(tmdbId, mediaType, season, episode) {
     console.log(tag + " Fetching " + mediaType + " " + tmdbId + (season ? " S" + season + "E" + episode : ""));
 
     try {
+      // Read setting from global Nuvio settings (fallback to empty)
+      var cf_clearance = (typeof global !== 'undefined' && global.nuvio && global.nuvio.scraperSettings && global.nuvio.scraperSettings.cf_clearance_cookie) ? global.nuvio.scraperSettings.cf_clearance_cookie : (typeof process !== 'undefined' ? process.env.IDLIX_CF_CLEARANCE || "" : "");
+
+      if (!cf_clearance) {
+        console.log(tag + " cf_clearance cookie ayarlanmamış. Lütfen Nuvio ayarlarından girin.");
+        return [];
+      }
+
       // 1) TMDB -> title + year
       var tmdbInfo = yield import_tmdb.lookup(tmdbId, mediaType);
       if (!tmdbInfo.title) { console.log(tag + " TMDB lookup failed"); return []; }
       console.log(tag + " TMDB: " + tmdbInfo.title + " (" + tmdbInfo.year + ")");
 
       // 2) IDLIX search
-      var searchRes = yield import_http.search(tmdbInfo.title);
+      var searchRes = yield import_http.search(tmdbInfo.title, cf_clearance);
       if (!searchRes || !Array.isArray(searchRes.results)) { console.log(tag + " Search failed"); return []; }
 
       // 3) Filtrele: tür + yıl
@@ -301,7 +306,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
       var uuid, kind, displayTitle;
 
       if (mediaType === "tv") {
-        var series = yield import_http.getSeries(item.slug);
+        var series = yield import_http.getSeries(item.slug, cf_clearance);
         if (!series || !Array.isArray(series.seasons)) { console.log(tag + " Series fetch failed"); return []; }
 
         var targetSeason = series.seasons.find(function(s) { return s.seasonNumber === parseInt(season); });
@@ -313,7 +318,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         }
         if (!eps) {
           try {
-            var seasonData = yield import_http.getSeriesSeason(item.slug, season);
+            var seasonData = yield import_http.getSeriesSeason(item.slug, season, cf_clearance);
             eps = (seasonData && seasonData.episodes) || (seasonData && seasonData.season && seasonData.season.episodes) || null;
           } catch (e) { console.log(tag + " Season fetch error: " + e.message); }
         }
@@ -332,7 +337,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
       }
 
       // 5) Play-info
-      var playInfo = yield import_http.getPlayInfo(kind, uuid);
+      var playInfo = yield import_http.getPlayInfo(kind, uuid, cf_clearance);
       if (!playInfo || !playInfo.gateToken) { console.log(tag + " No gateToken"); return []; }
 
       // 6) 15 sn bekle
@@ -343,19 +348,23 @@ function getStreams(tmdbId, mediaType, season, episode) {
       }
 
       // 7) Claim
-      var claimRes = yield import_http.claim(playInfo.gateToken);
+      var claimRes = yield import_http.claim(playInfo.gateToken, cf_clearance);
       if (!claimRes || !claimRes.claim) { console.log(tag + " Claim failed"); return []; }
 
       // 8) Redeem
-      var redeemRes = yield import_http.redeem(claimRes.redeemUrl, claimRes.claim);
+      var redeemRes = yield import_http.redeem(claimRes.redeemUrl, claimRes.claim, cf_clearance);
       if (!redeemRes || !redeemRes.url) { console.log(tag + " Redeem failed"); return []; }
 
       // 9) Master playlist
       var playlistRes = yield fetch(redeemRes.url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Referer": "https://z2.idlixku.com/"
-        }
+        headers: (function(){
+          var h = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://z2.idlixku.com/"
+          };
+          if (cf_clearance) h["Cookie"] = "cf_clearance=" + cf_clearance;
+          return h;
+        })()
       });
       if (!playlistRes.ok) { console.log(tag + " Playlist HTTP " + playlistRes.status); return []; }
       var playlistText = yield playlistRes.text();
