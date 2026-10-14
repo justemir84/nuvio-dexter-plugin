@@ -272,7 +272,34 @@ function getStreams(tmdbId, mediaType, season, episode) {
 
     try {
       // Read setting from global Nuvio settings (fallback to empty)
-      var cf_clearance = (typeof global !== 'undefined' && global.nuvio && global.nuvio.scraperSettings && global.nuvio.scraperSettings.cf_clearance_cookie) ? global.nuvio.scraperSettings.cf_clearance_cookie : (typeof process !== 'undefined' ? process.env.IDLIX_CF_CLEARANCE || "" : "");
+      function readCfClearance() {
+        // 1) globalThis.nuvio.scraperSettings (modern Nuvio)
+        try {
+          if (typeof globalThis !== "undefined" && globalThis.nuvio && globalThis.nuvio.scraperSettings) {
+            var v = globalThis.nuvio.scraperSettings.cf_clearance_cookie;
+            if (v) return v;
+          }
+        } catch (e) {}
+
+        // 2) global.nuvio.scraperSettings (eski Nuvio)
+        try {
+          if (typeof global !== "undefined" && global.nuvio && global.nuvio.scraperSettings) {
+            var v2 = global.nuvio.scraperSettings.cf_clearance_cookie;
+            if (v2) return v2;
+          }
+        } catch (e) {}
+
+        // 3) Environment variable fallback (test için)
+        try {
+          if (typeof process !== "undefined" && process.env && process.env.IDLIX_CF_CLEARANCE) {
+            return process.env.IDLIX_CF_CLEARANCE;
+          }
+        } catch (e) {}
+
+        return "";
+      }
+
+      var cf_clearance = readCfClearance();
 
       if (!cf_clearance) {
         console.log(tag + " cf_clearance cookie ayarlanmamış. Lütfen Nuvio ayarlarından girin.");
