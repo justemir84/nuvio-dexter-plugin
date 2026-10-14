@@ -424,4 +424,32 @@ function getStreams(tmdbId, mediaType, season, episode) {
   });
 }
 
-module.exports = { getStreams };
+function onSettings() {
+  return Promise.resolve([
+    {
+      type: "header",
+      label: "IDLIX Configuration"
+    },
+    {
+      type: "text",
+      isPassword: true,
+      key: "cf_clearance_cookie",
+      label: "Cloudflare cf_clearance Cookie",
+      placeholder: "cf_clearance değerini buraya yapıştırın...",
+      description: "IDLIX sitesine erişmek için gerekli Cloudflare çerezi. README.md'de nasıl alınacağı anlatılmıştır."
+    },
+    {
+      type: "header",
+      label: "Not"
+    },
+    {
+      type: "text",
+      key: "info_note",
+      label: "Cookie süresi",
+      placeholder: "",
+      description: "Cookie genellikle birkaç saat geçerlidir. Eklenti çalışmazsa yeni cookie alın."
+    }
+  ]);
+}
+
+module.exports = { getStreams, onSettings };
