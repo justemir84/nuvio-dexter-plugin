@@ -128,7 +128,7 @@
   // detail page -> [{label, url}] (480p haric)
   function parseDetail(html) {
     var out = [];
-    var re = /<h3[^>]*>([\s\S]{5,220}?)<\/h3>\s*<p[^>]*><a href="(https:\/\/(?:nexdrive\.(?:fit|beer)|vglist\.lol)[^"]+)"/gi;
+    var re = /<h[345][^>]*>([\s\S]{5,220}?)<\/h[345]>\s*<p[^>]*><a href="(https:\/\/(?:nexdrive\.(?:fit|beer)|vglist\.lol)[^"]+)"/gi;
     var m;
     while ((m = re.exec(html)) !== null) {
       var label = m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 140);
