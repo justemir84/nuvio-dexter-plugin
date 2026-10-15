@@ -98,7 +98,7 @@
     {
       "id": "vegamovies",
       "name": "VegaMovies",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/vegamovies.js",
       "supportedTypes": [
         "movie",
