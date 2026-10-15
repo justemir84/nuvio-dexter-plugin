@@ -132,7 +132,7 @@
     var m;
     while ((m = re.exec(html)) !== null) {
       var label = m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 140);
-      if (!label || is480(label)) continue;
+      if (!label) continue;
       out.push({ label: label, url: m[2] });
     }
     // yedek: basliksiz nexdrive linkleri
@@ -275,7 +275,6 @@
     }).then(function (html) {
       var nx = parseNex(html);
       var quality = parseQuality(entry.label);
-      if (quality === "480p") return [];
       var extra = richExtra(entry.label), size = sizeOf(entry.label);
       var found = [];
       nx.megaup.slice(0, 2).forEach(function (u) { found.push({ url: u, via: "Direct", ref: entry.url }); });
@@ -336,7 +335,6 @@
       }
       if (!eps.length) return [];
       var quality = parseQuality(entry.label);
-      if (quality === "480p") return [];
       var extra = richExtra(entry.label), size = sizeOf(entry.label);
       var id = eps[0];
       var page = "https://one.vegadrive.me/s/" + id;
