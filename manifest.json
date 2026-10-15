@@ -1,7 +1,7 @@
 {
   "name": "Multi Provider Repository",
-  "version": "1.5.0",
-  "description": "Dexter.pw, IDLIX, KMMovies ve YTS kaynak sağlayıcıları",
+  "version": "1.6.0",
+  "description": "Dexter.pw, IDLIX, KMMovies, YTS ve MovieBox kaynak sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -46,6 +46,17 @@
       "hasSettings": false,
       "formats": ["mp4"],
       "contentLanguage": ["en"]
+    },
+    {
+      "id": "moviebox",
+      "name": "MovieBox",
+      "version": "1.0.0",
+      "filename": "providers/moviebox.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["mp4", "mpd", "m3u8"],
+      "contentLanguage": ["en", "hi"]
     }
   ]
 }

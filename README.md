@@ -11,7 +11,7 @@ Nuvio'da **Settings → Content & Discovery → Plugins → Add Repository** yol
 ## Depo yapısı
 
 - `manifest.json`: Güncel Nuvio plugin şemasında üst düzey `name`, `version` ve `scrapers` alanlarını içerir.
-- `providers/dexterpw.js`: Manifestteki `filename` alanıyla eşleşen derlenmiş provider modülüdür.
+- `providers/`: Manifestteki `filename` alanlarıyla eşleşen provider modüllerini içerir (`dexterpw.js`, `idlix.js`, `kmmovies.js`, `yts.js`, `moviebox.js`).
 
 Manifestteki dosya yolu, manifest adresinin bulunduğu klasöre göre çözülür. Provider modülü `getStreams` fonksiyonunu dışa aktarır. Manifest ve dosya yolu doğrulanmıştır; gerçek video oynatma henüz Nuvio içinde doğrulanmış değildir.
 
