@@ -8,7 +8,10 @@
       "name": "Dexter.pw",
       "version": "1.0.8",
       "filename": "providers/dexterpw.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false
     },
@@ -18,22 +21,39 @@
       "version": "1.0.3",
       "description": "IDLIX provider with cf_clearance cookie support",
       "filename": "providers/idlix.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": true,
-      "formats": ["m3u8"],
-      "contentLanguage": ["en", "id"]
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en",
+        "id"
+      ]
     },
     {
       "id": "kmmovies",
       "name": "KMMovies",
       "version": "1.0.0",
       "filename": "providers/kmmovies.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false,
-      "formats": ["mkv", "mp4"],
-      "contentLanguage": ["en", "hi"]
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     },
     {
       "id": "yts",
@@ -41,22 +61,59 @@
       "version": "1.0.0",
       "description": "YTS torrent provider (magnet, debrid gerektirir)",
       "filename": "providers/yts.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false,
-      "formats": ["mp4"],
-      "contentLanguage": ["en"]
+      "formats": [
+        "mp4"
+      ],
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "moviebox",
       "name": "MovieBox",
       "version": "1.0.1",
       "filename": "providers/moviebox.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false,
-      "formats": ["mp4", "mpd", "m3u8"],
-      "contentLanguage": ["en", "hi"]
+      "formats": [
+        "mp4",
+        "mpd",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
+    },
+    {
+      "id": "vegamovies",
+      "name": "VegaMovies",
+      "version": "1.0.0",
+      "filename": "providers/vegamovies.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     }
   ]
 }
