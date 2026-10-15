@@ -190,8 +190,8 @@
           var u = a[1];
           if (seen[u]) continue;
           seen[u] = true;
-          if (/r2\.(dev|cloudflarestorage\.com)/.test(u)) found.push({ url: u, via: "R2" });
-          else if (/hubcloud\.\w+\//.test(u)) found.push({ url: u, via: "Hub" });
+          if (/r2\.(dev|cloudflarestorage\.com)/.test(u)) found.push({ url: u, via: "R2", ref: vurl });
+          else if (/hubcloud\.\w+\//.test(u)) found.push({ url: u, via: "Hub", ref: vurl });
         }
         return found;
       }).catch(function () { return []; });
@@ -203,8 +203,8 @@
     return fetchTimeout(hurl, { headers: headers(referer), redirect: "manual" }).then(function (r) {
       var loc = null;
       try { loc = r.headers.get("location"); } catch (e) {}
-      if (loc && /^https?:\/\//.test(loc) && loc.indexOf("hubcloud") === -1) return [{ url: loc, via: "Hub" }];
-      if (r.url && /^https?:\/\//.test(r.url) && r.url.indexOf("hubcloud") === -1 && r.url !== hurl) return [{ url: r.url, via: "Hub" }];
+      if (loc && /^https?:\/\//.test(loc) && loc.indexOf("hubcloud") === -1) return [{ url: loc, via: "Hub", ref: hurl }];
+      if (r.url && /^https?:\/\//.test(r.url) && r.url.indexOf("hubcloud") === -1 && r.url !== hurl) return [{ url: r.url, via: "Hub", ref: hurl }];
       return [];
     }).catch(function () { return []; });
   }
@@ -217,7 +217,7 @@
     }).then(function (html) {
       var re = /<a[^>]+href="(https?:\/\/(?:drive\.google\.com|docs\.google\.com|filebee\.xyz)[^"]+)"/gi, m;
       while ((m = re.exec(html)) !== null) {
-        if (/uc\?|export=download|download/i.test(m[1])) return [{ url: m[1], via: "Drive" }];
+        if (/uc\?|export=download|download/i.test(m[1])) return [{ url: m[1], via: "Drive", ref: furl }];
       }
       return [];
     }).catch(function () { return []; });
@@ -231,7 +231,7 @@
         return r.text().then(function (t) {
           var d = null;
           try { d = JSON.parse(t); } catch (e) { return []; }
-          if (d && d.ready && d.download_url && /^https?:\/\//.test(d.download_url)) return [{ url: d.download_url, via: "Drive" }];
+          if (d && d.ready && d.download_url && /^https?:\/\//.test(d.download_url)) return [{ url: d.download_url, via: "Drive", ref: referer }];
           if (d && d.ready === false && left > 0) {
             var wait = Math.min(d.retry_after_ms || 2500, 8000);
             return new Promise(function (res) { setTimeout(res, wait); }).then(function () { return attempt(left - 1); });
@@ -248,7 +248,7 @@
     return m ? m[1] : null;
   }
 
-  function makeStream(display, quality, url, via, extra, size) {
+  function makeStream(display, quality, url, via, extra, size, ref) {
     return {
       name: "VegaMovies - " + quality + " (" + via + ")",
       title: display + "\n" + quality + (extra ? " | " + extra : "") + (size ? " | " + size : ""),
@@ -256,7 +256,8 @@
       quality: quality,
       isM3u8: false,
       provider: "vegamovies",
-      type: "direct"
+      type: "direct",
+      headers: { Referer: ref || BASE + "/", "User-Agent": UA }
     };
   }
 
@@ -277,7 +278,7 @@
       if (quality === "480p") return [];
       var extra = richExtra(entry.label), size = sizeOf(entry.label);
       var found = [];
-      nx.megaup.slice(0, 2).forEach(function (u) { found.push({ url: u, via: "Direct" }); });
+      nx.megaup.slice(0, 2).forEach(function (u) { found.push({ url: u, via: "Direct", ref: entry.url }); });
       var chain = Promise.resolve(found);
       nx.vcloud.slice(0, 2).forEach(function (u) {
         chain = chain.then(function (acc) {
@@ -295,7 +296,7 @@
       });
       return chain.then(function (all) {
         return all.slice(0, 4).map(function (f) {
-          return makeStream(display, quality, f.url, f.via, extra, size);
+          return makeStream(display, quality, f.url, f.via, extra, size, f.ref);
         });
       });
     }).catch(function () { return []; });
@@ -351,7 +352,7 @@
       });
       return chain.then(function (all) {
         return all.slice(0, 2).map(function (f) {
-          return makeStream(display, quality, f.url, f.via === "Drive" ? "VegaDrive" : f.via, extra, size);
+          return makeStream(display, quality, f.url, f.via === "Drive" ? "VegaDrive" : f.via, extra, size, f.ref);
         });
       });
     }).catch(function () { return []; });
