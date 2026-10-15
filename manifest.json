@@ -1,7 +1,7 @@
 {
   "name": "Multi Provider Repository",
-  "version": "1.4.0",
-  "description": "Dexter.pw, IDLIX ve KMMovies kaynak sağlayıcıları",
+  "version": "1.5.0",
+  "description": "Dexter.pw, IDLIX, KMMovies ve YTS kaynak sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -34,6 +34,18 @@
       "hasSettings": false,
       "formats": ["mkv", "mp4"],
       "contentLanguage": ["en", "hi"]
+    },
+    {
+      "id": "yts",
+      "name": "YTS",
+      "version": "1.0.0",
+      "description": "YTS torrent provider (magnet, debrid gerektirir)",
+      "filename": "providers/yts.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["mp4"],
+      "contentLanguage": ["en"]
     }
   ]
 }
