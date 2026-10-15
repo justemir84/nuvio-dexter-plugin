@@ -376,7 +376,7 @@
       if (!detailUrl) { console.log(tag + " No match"); return []; }
       ctx.detailUrl = detailUrl;
       console.log(tag + " Match: " + detailUrl);
-      return fetchTimeout(detailUrl, { headers: headers(BASE + "/") }).then(function (r) {
+      return fetchTimeout(fullUrl(detailUrl), { headers: headers(BASE + "/") }).then(function (r) {
         if (!r.ok) throw new Error("Detail " + r.status);
         return r.text();
       });
