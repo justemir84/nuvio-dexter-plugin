@@ -41,6 +41,18 @@
     return "HD";
   }
 
+  function parseRelease(title) {
+    var s = " " + String(title || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
+    var codec = /x265|hevc|h265/.test(s) ? "HEVC x265" : (/x264|h264|avc/.test(s) ? "H.264" : (/av1/.test(s) ? "AV1" : ""));
+    var depth = /10bit|10 bit|hi10/.test(s) ? "10bit" : "";
+    var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : (/hlg/.test(s) ? "HLG" : (/ sdr/.test(s) ? "SDR" : "")))));
+    var audio = /truehd/.test(s) ? "TrueHD" : (/dts/.test(s) ? "DTS" : (/atmos/.test(s) ? "Atmos" : ""));
+    var ach = /ddp.?5\.1|dd.?5\.1|ac.?3|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : (/aac/.test(s) ? "AAC" : ""));
+    var src = /remux/.test(s) ? "REMUX" : (/bluray|blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/webrip/.test(s) ? "WEBRip" : (/hdtv/.test(s) ? "HDTV" : (/dvdrip|dvd/.test(s) ? "DVD" : "")))));
+    var lang = /dual/.test(s) ? "Dual Audio" : (/multi|hindi.*english|eng.*hin/.test(s) ? (/hindi/.test(s) ? "Multi (Hindi+Eng)" : "Multi Audio") : "");
+    return { codec: codec, depth: depth, hdr: hdr, audio: (audio + (ach ? " " + ach : "")).trim(), src: src, lang: lang };
+  }
+
   function fmtBytes(b) {
     b = Number(b) || 0;
     if (b >= 1073741824) return (b / 1073741824).toFixed(2) + " GB";
@@ -127,7 +139,9 @@
     var seeds = fmtSeeds(hit.seeds);
     var size = fmtBytes(hit.bytes);
     var q = quality || parseQuality(hit.title);
-    var text = display + "\n" + q + " | Seeds " + seeds + " | " + size + " | " + (hit.source || "torrent");
+    var r = parseRelease(hit.title);
+    var line2 = [q, [r.codec, r.depth].filter(Boolean).join(" "), [r.hdr, r.audio].filter(Boolean).join(" "), r.src, r.lang].filter(Boolean).join(" | ");
+    var text = display + "\n" + line2 + "\nSeeds " + seeds + " | " + size + " | " + (hit.source || "torrent");
     return {
       name: "YTS " + q + " (S" + seeds + ")",
       title: text,
