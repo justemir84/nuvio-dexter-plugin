@@ -22,19 +22,17 @@
   var selModel = "";
   var bearerToken = "";
 
-  /* ---------- bytes / utf8 / base64 / md5 ---------- */
-
   function utf8Bytes(s) {
     s = String(s);
-    var out = [];
-    for (var i = 0; i < s.length; i++) {
-      var c = s.charCodeAt(i);
+    var out = [], i, c, d, cp;
+    for (i = 0; i < s.length; i++) {
+      c = s.charCodeAt(i);
       if (c < 128) out.push(c);
       else if (c < 2048) out.push(192 | (c >> 6), 128 | (c & 63));
       else if (c >= 55296 && c <= 56319 && i + 1 < s.length) {
-        var d = s.charCodeAt(i + 1);
+        d = s.charCodeAt(i + 1);
         if (d >= 56320 && d <= 57343) {
-          var cp = ((c - 55296) << 10) + (d - 56320) + 65536;
+          cp = ((c - 55296) << 10) + (d - 56320) + 65536;
           out.push(240 | (cp >> 18), 128 | ((cp >> 12) & 63), 128 | ((cp >> 6) & 63), 128 | (cp & 63));
           i++;
         } else out.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
@@ -44,9 +42,9 @@
   }
 
   function utf8Str(bytes) {
-    var s = "", i = 0;
+    var s = "", i = 0, c;
     while (i < bytes.length) {
-      var c = bytes[i];
+      c = bytes[i];
       if (c < 128) { s += String.fromCharCode(c); i++; }
       else if ((c & 224) === 192) { s += String.fromCharCode(((c & 31) << 6) | (bytes[i + 1] & 63)); i += 2; }
       else if ((c & 240) === 224) { s += String.fromCharCode(((c & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63)); i += 3; }
@@ -63,9 +61,9 @@
   var B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
   function b64encode(bytes) {
-    var s = "";
-    for (var i = 0; i < bytes.length; i += 3) {
-      var b0 = bytes[i], b1 = i + 1 < bytes.length ? bytes[i + 1] : 0, b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    var s = "", i, b0, b1, b2;
+    for (i = 0; i < bytes.length; i += 3) {
+      b0 = bytes[i]; b1 = i + 1 < bytes.length ? bytes[i + 1] : 0; b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
       s += B64C[b0 >> 2] + B64C[((b0 & 3) << 4) | (b1 >> 4)];
       s += i + 1 < bytes.length ? B64C[((b1 & 15) << 2) | (b2 >> 6)] : "=";
       s += i + 2 < bytes.length ? B64C[b2 & 63] : "=";
@@ -75,11 +73,11 @@
 
   function b64decode(str) {
     str = String(str).replace(/[^A-Za-z0-9+/=]/g, "");
-    var out = [];
-    for (var i = 0; i < str.length; i += 4) {
-      var e0 = B64C.indexOf(str.charAt(i)), e1 = B64C.indexOf(str.charAt(i + 1));
-      var e2 = str.charAt(i + 2) === "=" ? 0 : B64C.indexOf(str.charAt(i + 2));
-      var e3 = str.charAt(i + 3) === "=" ? 0 : B64C.indexOf(str.charAt(i + 3));
+    var out = [], i, e0, e1, e2, e3;
+    for (i = 0; i < str.length; i += 4) {
+      e0 = B64C.indexOf(str.charAt(i)); e1 = B64C.indexOf(str.charAt(i + 1));
+      e2 = str.charAt(i + 2) === "=" ? 0 : B64C.indexOf(str.charAt(i + 2));
+      e3 = str.charAt(i + 3) === "=" ? 0 : B64C.indexOf(str.charAt(i + 3));
       out.push((e0 << 2) | (e1 >> 4));
       if (str.charAt(i + 2) !== "=") out.push(((e1 & 15) << 4) | (e2 >> 2));
       if (str.charAt(i + 3) !== "=") out.push(((e2 & 3) << 6) | e3);
@@ -92,8 +90,7 @@
     var bitLen = bytes.length * 8;
     m.push(128);
     while ((m.length % 64) !== 56) m.push(0);
-    var lo = bitLen >>> 0, hi = Math.floor(bitLen / 4294967296);
-    var i, j;
+    var lo = bitLen >>> 0, hi = Math.floor(bitLen / 4294967296), i, j;
     for (i = 0; i < 4; i++) m.push((lo >>> (i * 8)) & 255);
     for (j = 0; j < 4; j++) m.push((hi >>> (j * 8)) & 255);
     var a0 = 1732584193, b0 = -271733879, c0 = -1732584194, d0 = 271733878;
@@ -103,10 +100,10 @@
              4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
              6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
     for (var off = 0; off < m.length; off += 64) {
-      var X = [];
-      for (var k = 0; k < 16; k++) X[k] = (m[off + k * 4] | (m[off + k * 4 + 1] << 8) | (m[off + k * 4 + 2] << 16) | (m[off + k * 4 + 3] << 24)) | 0;
-      var A = a0, B = b0, C = c0, D = d0, f, g;
-      for (var t = 0; t < 64; t++) {
+      var X = [], k;
+      for (k = 0; k < 16; k++) X[k] = (m[off + k * 4] | (m[off + k * 4 + 1] << 8) | (m[off + k * 4 + 2] << 16) | (m[off + k * 4 + 3] << 24)) | 0;
+      var A = a0, B = b0, C = c0, D = d0, f, g, t;
+      for (t = 0; t < 64; t++) {
         if (t < 16) { f = (B & C) | (~B & D); g = t; }
         else if (t < 32) { f = (D & B) | (~D & C); g = (5 * t + 1) % 16; }
         else if (t < 48) { f = B ^ C ^ D; g = (3 * t + 5) % 16; }
@@ -123,8 +120,8 @@
   }
 
   function md5HexBytes(bytes) {
-    var d = md5Raw(bytes), s = "";
-    for (var i = 0; i < d.length; i++) s += (d[i] < 16 ? "0" : "") + d[i].toString(16);
+    var d = md5Raw(bytes), s = "", i;
+    for (i = 0; i < d.length; i++) s += (d[i] < 16 ? "0" : "") + d[i].toString(16);
     return s;
   }
 
@@ -132,9 +129,9 @@
 
   function hmacMd5Bytes(key, msg) {
     if (key.length > 64) key = md5Raw(key);
-    var ip = [], op = [];
-    for (var i = 0; i < 64; i++) {
-      var kb = i < key.length ? key[i] : 0;
+    var ip = [], op = [], i, kb;
+    for (i = 0; i < 64; i++) {
+      kb = i < key.length ? key[i] : 0;
       ip.push(kb ^ 54); op.push(kb ^ 92);
     }
     return md5Raw(op.concat(md5Raw(ip.concat(msg))));
@@ -145,13 +142,10 @@
   function secretBytes(alt) {
     var k = alt ? "a" : "d";
     if (!SECRET_CACHE[k]) {
-      var first = utf8Str(b64decode(alt ? KEY_B64_ALT : KEY_B64_DEFAULT));
-      SECRET_CACHE[k] = b64decode(first);
+      SECRET_CACHE[k] = b64decode(utf8Str(b64decode(alt ? KEY_B64_ALT : KEY_B64_DEFAULT)));
     }
     return SECRET_CACHE[k];
   }
-
-  /* ---------- session / signing / request ---------- */
 
   var BRANDS = { Samsung: ["SM-S918B", "SM-A528B"], Xiaomi: ["2201117TI", "Redmi Note 11"], OnePlus: ["LE2111", "IN2023"], Google: ["Pixel 6", "Pixel 8"], Realme: ["RMX3085", "RMX3551"] };
 
@@ -202,7 +196,6 @@
     var accept = custom.Accept || "application/json";
     var ctype = custom["Content-Type"] || (body ? "application/json; charset=utf-8" : "application/json");
     var rev = String(ts).split("").reverse().join("");
-    var xToken = ts + "," + md5Hex(rev);
     var can = canonicalStr(method, accept, ctype, url, body, ts);
     var sig = b64encode(hmacMd5Bytes(secretBytes(alt), utf8Bytes(can)));
     var info = JSON.stringify({
@@ -214,7 +207,7 @@
     var h = {
       Accept: accept,
       "Content-Type": ctype,
-      "x-client-token": xToken,
+      "x-client-token": ts + "," + md5Hex(rev),
       "x-tr-signature": ts + "|2|" + sig,
       "User-Agent": PKG_NAME + "/" + PKG_CODE + " (Linux; U; Android 14; en_IN; " + selModel + "; Build/UD1A.230803.041; Cronet/145.0.7582.0)",
       "x-client-info": info,
@@ -233,17 +226,9 @@
     } catch (e) { return false; }
   }
 
-  function apiHost(u) {
-    try { return new URL(u).host; } catch (e) { return ""; }
-  }
-
-  function poolHosts() {
-    return HOSTS.map(function (h) { return apiHost(h); });
-  }
-
-  function sendOnce(method, url, body, custom, ts, alt) {
+  function sendOnce(method, url, body, custom, ts, alt, useBearer) {
     var h = buildHeaders(method, url, body, custom, ts, alt);
-    if (custom && custom.__bearer && bearerToken) h.Authorization = "Bearer " + bearerToken;
+    if (useBearer && bearerToken) h.Authorization = "Bearer " + bearerToken;
     var opt = { method: method, headers: h };
     if (body) opt.body = body;
     return fetchTimeout(url, opt).then(function (res) {
@@ -272,20 +257,19 @@
     customHeaders = customHeaders || {};
     var host;
     try { host = new URL(url).host; } catch (e) { return Promise.resolve(null); }
-    var pool = poolHosts();
-    var hosts = pool.indexOf(host) === -1 ? [host] : [host].concat(pool.filter(function (h) { return h !== host; })).slice(0, 3);
+    var pool = HOSTS.map(function (h) {
+      try { return new URL(h).host; } catch (e) { return ""; }
+    });
+    var hosts = pool.indexOf(host) === -1 ? [host] : [host].concat(pool.filter(function (h) { return h && h !== host; })).slice(0, 3);
     var queue = [];
     hosts.forEach(function (h) { queue.push([h, false]); queue.push([h, true]); });
     var p = Promise.resolve({ retry: true });
-    queue.forEach(function (q) {
+    queue.forEach(function (qq) {
       p = p.then(function (r) {
         if (r && !r.retry) return r;
-        var uu = url.replace(/^https?:\/\/[^\/]+/, "https://" + q[0]);
+        var uu = url.replace(/^https?:\/\/[^\/]+/, "https://" + qq[0]);
         var ts = Date.now();
-        var custom = {};
-        for (var k in customHeaders) custom[k] = customHeaders[k];
-        if (!isTokenFetch) custom.__bearer = true;
-        return sendOnce(method, uu, body, custom, ts, q[1]);
+        return sendOnce(method, uu, body, customHeaders, ts, qq[1], !isTokenFetch);
       });
     });
     return p.then(function (r) { return (r && !r.retry) ? r : null; });
@@ -298,8 +282,6 @@
       return (bearerToken && jwtValid(bearerToken)) ? bearerToken : "";
     });
   }
-
-  /* ---------- tmdb / match ---------- */
 
   function tmdbLookup(tmdbId, mediaType) {
     var type = mediaType === "tv" ? "tv" : "movie";
@@ -350,9 +332,7 @@
     return bestScore >= 40 ? best : null;
   }
 
-  /* ---------- detail / play-info / captions ---------- */
-
-  function getPlaybackPage(detail, subjectId) {
+  function getPlaybackPage(detail) {
     var cands = [detail.detailPath, detail.detail_path, detail.path, detail.slug];
     var dp = null, i;
     for (i = 0; i < cands.length; i++) {
@@ -421,7 +401,7 @@
     var cm = signCookie.match(/CloudFront-Policy=([^;]+)/);
     if (cm) {
       try {
-        var raw = cm[1], b = raw.replace(/-/g, "+").replace(/~/g, "/").replace(/_/g, "=");
+        var b = cm[1].replace(/-/g, "+").replace(/~/g, "/").replace(/_/g, "=");
         while (b.length % 4) b += "=";
         var root = JSON.parse(utf8Str(b64decode(b)));
         var res = root && root.Statement && root.Statement[0] && root.Statement[0].Resource;
@@ -475,12 +455,12 @@
     return raw + " Audio";
   }
 
-  function extraTokens(stream) {
+  function extraTokens(st) {
     var toks = [];
     function yes(v) { return v === true || (typeof v === "string" && /true|1|yes|hdr|dv|dolby/i.test(v)); }
-    if (yes(stream.hdr) || yes(stream.hdr10) || /hdr/i.test(String(stream.definition || stream.quality || ""))) toks.push("HDR");
-    if (yes(stream.dolbyVision) || yes(stream.dolby_vision)) toks.push("DV");
-    if (/hevc|x265/i.test(String(stream.codec || stream.videoCodec || stream.url || ""))) toks.push("HEVC");
+    if (yes(st.hdr) || yes(st.hdr10) || /hdr/i.test(String(st.definition || st.quality || ""))) toks.push("HDR");
+    if (yes(st.dolbyVision) || yes(st.dolby_vision)) toks.push("DV");
+    if (/hevc|x265/i.test(String(st.codec || st.videoCodec || ""))) toks.push("HEVC");
     return toks.join(" ");
   }
 
@@ -510,7 +490,7 @@
     return mbRequest("GET", HOSTS[0] + "/wefeed-mobile-bff/subject-api/get?subjectId=" + encodeURIComponent(subjectId), null, {}).then(function (res) {
       if (!res || !res.data || !res.data.data) return [];
       var detail = res.data.data;
-      var page = getPlaybackPage(detail, subjectId);
+      var page = getPlaybackPage(detail);
       var origLang = detail.language || detail.lan || detail.originalLanguage || "en";
       var ids = [{ id: subjectId, lang: origLang }];
       dubVariants(detail).forEach(function (d) { ids.push(d); });
@@ -593,7 +573,7 @@
         return best;
       }).then(function (best) {
         if (!best) {
-          console.log(tag + " No matching content found for: " + info.title);
+          console.log(tag + " No matching content found");
           return [];
         }
         var s = mediaType === "tv" ? (seasonNum || 1) : 0;
