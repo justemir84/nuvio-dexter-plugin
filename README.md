@@ -1,5 +1,5 @@
 # Dexter.pw — Nuvio Plugin Repository
-
+https://t.me/justemir84dev
 Bu depo, Nuvio uygulamasının **Plugins** bölümünde eklenen bir provider deposudur; Stremio/Nuvio **Addons** manifesti değildir.
 
 ## Kurulum
