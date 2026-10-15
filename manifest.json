@@ -50,7 +50,7 @@
     {
       "id": "moviebox",
       "name": "MovieBox",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/moviebox.js",
       "supportedTypes": ["movie", "tv"],
       "enabled": true,
