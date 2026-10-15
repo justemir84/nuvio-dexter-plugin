@@ -1,7 +1,7 @@
 {
   "name": "Multi Provider Repository",
-  "version": "1.3.0",
-  "description": "Dexter.pw ve IDLIX kaynak sağlayıcıları",
+  "version": "1.4.0",
+  "description": "Dexter.pw, IDLIX ve KMMovies kaynak sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -23,6 +23,17 @@
       "hasSettings": true,
       "formats": ["m3u8"],
       "contentLanguage": ["en", "id"]
+    },
+    {
+      "id": "kmmovies",
+      "name": "KMMovies",
+      "version": "1.0.0",
+      "filename": "providers/kmmovies.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["mkv", "mp4"],
+      "contentLanguage": ["en", "hi"]
     }
   ]
 }
