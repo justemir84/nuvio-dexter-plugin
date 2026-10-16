@@ -1,6 +1,6 @@
 /**
  * kmmovies - KMMovies provider for Nuvio
- * Flow: TMDB -> title/year -> kmmovies.cfd search -> detail page
+ * Flow: TMDB -> title/year -> SITE_DOMAIN search -> detail page
  *   movie: w3.magiclinks.lol links -> WATCH ONLINE (r2.dev direct)
  *          / pixeldrain api direct / skydrop POST -> googleusercontent direct
  *   tv: episodes.magiclinks.lol season+quality pages -> Episode N skydrop
@@ -11,8 +11,8 @@
 (function () {
   "use strict";
 
-  // Domain değişirse SADECE bu satırı değiştir
-  var SITE_DOMAIN = "kmmovies.cfd";
+  // Domain değişirse SADECE bu satırı değiştir — dosyanın geri kalanı otomatik uyum sağlar.
+  var SITE_DOMAIN = "k1.kmmovies.cam";
   var BASE = "https://" + SITE_DOMAIN;
   var SITE_RE = SITE_DOMAIN.replace(/\./g, "\\.");
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
@@ -58,18 +58,6 @@
     return "HD";
   }
 
-  function parseRelease(title) {
-    var s = " " + String(title || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
-    var codec = /x265|hevc|h265/.test(s) ? "HEVC x265" : (/x264|h264|avc/.test(s) ? "H.264" : (/av1/.test(s) ? "AV1" : ""));
-    var depth = /10bit|10 bit|hi10/.test(s) ? "10bit" : "";
-    var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : (/hlg/.test(s) ? "HLG" : (/ sdr/.test(s) ? "SDR" : "")))));
-    var audio = /truehd/.test(s) ? "TrueHD" : (/dts/.test(s) ? "DTS" : (/atmos/.test(s) ? "Atmos" : ""));
-    var ach = /ddp.?5\.1|dd.?5\.1|ac.?3|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : (/aac/.test(s) ? "AAC" : ""));
-    var src = /remux/.test(s) ? "REMUX" : (/bluray|blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/webrip/.test(s) ? "WEBRip" : (/hdtv/.test(s) ? "HDTV" : (/dvdrip|dvd/.test(s) ? "DVD" : "")))));
-    var lang = /dual/.test(s) ? "Dual Audio" : (/multi|hindi.*english|eng.*hin/.test(s) ? (/hindi/.test(s) ? "Multi (Hindi+Eng)" : "Multi Audio") : "");
-    return { codec: codec, depth: depth, hdr: hdr, audio: (audio + (ach ? " " + ach : "")).trim(), src: src, lang: lang };
-  }
-
   function pad2(n) {
     n = parseInt(n, 10);
     return (n < 10 ? "0" : "") + n;
@@ -109,7 +97,7 @@
       })
       .then(function (html) {
         var links = [];
-        var re = /<a[^>]+href="(https:\/\/kmmovies\.cfd\/[^"]+\/)"[^>]*>/gi;
+        var re = new RegExp('<a[^>]+href="(https://' + SITE_RE + '/[^"]+/)"[^>]*>', 'gi');
         var m;
         while ((m = re.exec(html)) !== null) {
           if (links.indexOf(m[1]) === -1) links.push(m[1]);
@@ -167,13 +155,14 @@
   // --- detail page: collect w3 + episodes links with labels + season section ---
   function parseDetail(html) {
     var out = { w3: [], episodes: [] };
+    // season section headings to attribute packs to seasons
     var heads = [];
     var hre = /Season\s+(\d+)\s*\(\d+\s*eps?\)/gi;
     var hm;
     while ((hm = hre.exec(html)) !== null) {
       heads.push({ season: parseInt(hm[1], 10), index: hm.index });
     }
-    var re = /<a[^>]+href="(https:\/\/(?:w3|episodes)\.magiclinks\.lol\/[^\"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    var re = /<a[^>]+href="(https:\/\/(?:w3|episodes)\.magiclinks\.lol\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     var m;
     while ((m = re.exec(html)) !== null) {
       var url = m[1];
@@ -197,13 +186,9 @@
 
   // --- w3 page html -> watch-online / pixeldrain / skydrop hrefs ---
   function parseW3(html) {
-    var res = { watch: null, pixeldrain: [], skydrop: [], file: null };
+    var res = { watch: null, pixeldrain: [], skydrop: [] };
     var m = html.match(/https:\/\/z1\.kmphotos\.cv\/online\.php\?file=[^"'\s<]+/);
     if (m) res.watch = m[0];
-
-    var fm = html.match(/File Name:\s*(?:<\/[^>]+>\s*)*([^<\n]+)/i);
-    if (fm) res.file = fm[1].trim();
-
     var re2 = /https:\/\/pixeldrain\.com\/u\/([A-Za-z0-9]+)/g;
     var p;
     while ((p = re2.exec(html)) !== null) {
@@ -265,6 +250,7 @@
         return r.text().then(function (t) { return { res: r, text: t }; });
       });
     }
+    // 1) landing page (download.php?id= -> follows to /id/)
     return get(skyUrl, BASE + "/").then(function (landed) {
       var pageUrl = (landed.res && landed.res.url) || skyUrl;
       var h = headers(pageUrl);
@@ -294,7 +280,7 @@
 
   function isFileUrl(u) {
     u = String(u || "");
-    if (/skydrop\.sbs|magiclinks\.lol|kmmovies\.cfd|kmphotos\.cv\/(online|download99)\.php|gofile\.io|vikingfile\.com|bzzhr\.co|transfer\.it/.test(u)) return false;
+    if (new RegExp("skydrop\\.sbs|magiclinks\\.lol|" + SITE_RE + "|kmphotos\\.cv/(online|download99)\\.php|gofile\\.io|vikingfile\\.com|bzzhr\\.co|transfer\\.it").test(u)) return false;
     return true;
   }
 
@@ -311,20 +297,20 @@
         var jobs = [];
         if (parsed.watch) {
           jobs.push(resolveWatchOnline(parsed.watch).then(function (direct) {
-            return direct ? [{ url: direct, via: "R2", quality: w3.quality, size: w3.size, label: w3.label, file: parsed.file }] : [];
+            return direct ? [{ url: direct, via: "R2", quality: w3.quality, size: w3.size, label: w3.label }] : [];
           }));
         }
         parsed.pixeldrain.slice(0, 1).forEach(function (pd) {
-          jobs.push(Promise.resolve([{ url: pd, via: "Pixeldrain", quality: w3.quality, size: w3.size, label: w3.label, file: parsed.file }]));
+          jobs.push(Promise.resolve([{ url: pd, via: "Pixeldrain", quality: w3.quality, size: w3.size, label: w3.label }]));
         });
         if (allowSkydrop !== false && !parsed.watch && parsed.pixeldrain.length === 0 && parsed.skydrop.length > 0) {
           jobs.push(resolveSkydrop(parsed.skydrop[0]).then(function (direct) {
-            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label, file: parsed.file }] : [];
+            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : [];
           }));
         }
         if (!jobs.length && allowSkydrop !== false && parsed.skydrop.length > 0) {
           jobs.push(resolveSkydrop(parsed.skydrop[0]).then(function (direct) {
-            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label, file: parsed.file }] : [];
+            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : [];
           }));
         }
         return Promise.all(jobs).then(function (arr) {
@@ -368,6 +354,7 @@
           if (m) break;
         }
         if (!m) {
+          // generic: all skydrop links on page, pick by order
           var all = [];
           var re = /(https:\/\/w\d+\.skydrop\.sbs\/download\.php\?id=[^"'\s<]+)/g;
           var s;
@@ -385,12 +372,10 @@
       .catch(function () { return null; });
   }
 
-  function makeStream(title, quality, url, via, size, label, file) {
-    var r = parseRelease((file || "") + " " + (label || ""));
-    var extras = [[r.codec, r.depth].filter(Boolean).join(" "), [r.hdr, r.audio].filter(Boolean).join(" "), label].filter(Boolean).join(" | ");
+  function makeStream(title, quality, url, via, size) {
     return {
       name: "KMMovies - " + quality + " (" + via + ")",
-      title: title + "\n" + quality + (extras ? " | " + extras : "") + (size ? " | " + size : ""),
+      title: title + (size ? " | " + size : ""),
       url: url,
       quality: quality,
       isM3u8: false,
@@ -420,10 +405,12 @@
       });
     }).then(function (html) {
       if (!html) return [];
-      if (typeof html !== "string") return html;
+      if (typeof html !== "string") return html; // already streams array from early return
       var parsed = parseDetail(html);
       var displayBase = ctx.title + (ctx.year ? " (" + ctx.year + ")" : "");
       if (mediaType === "tv") {
+        // episode-wise links are skydrop JS-gated -> use season packs (w3)
+        // filtered to the requested season; pack plays the whole season
         var wantS = parseInt(season || 1, 10);
         var packs = parsed.w3.filter(function (w) {
           return w.season === null || w.season === wantS;
@@ -438,13 +425,15 @@
         var display = displayBase + " S" + pad2(wantS) + "E" + pad2(episode || 1) + " Pack";
         return resolveW3List(packs, ctx.detailUrl, MAX_W3, false).then(function (found) {
           var streams = found.slice(0, 10).map(function (f) {
-            return makeStream(display, f.quality, f.url, f.via, f.size, f.label, f.file);
+            return makeStream(display, f.quality, f.url, f.via, f.size);
           });
           console.log(tag + " Found " + streams.length + " streams");
           return streams;
         });
       }
+      // movie: w3 links
       if (!parsed.w3.length) { console.log(tag + " No w3 links"); return []; }
+      // prefer 1080p/720p mid sizes first
       var order = { "1080p": 0, "720p": 1, "2160p": 2, "480p": 3, "HD": 4 };
       parsed.w3.sort(function (a, b) {
         return (order[a.quality] === undefined ? 5 : order[a.quality]) -
@@ -453,7 +442,7 @@
       return resolveW3List(parsed.w3, ctx.detailUrl, MAX_W3).then(function (found) {
         var display = displayBase;
         var streams = found.slice(0, 10).map(function (f) {
-          return makeStream(display, f.quality, f.url, f.via, f.size, f.label, f.file);
+          return makeStream(display, f.quality, f.url, f.via, f.size);
         });
         console.log(tag + " Found " + streams.length + " streams");
         return streams;
