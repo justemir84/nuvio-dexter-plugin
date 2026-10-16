@@ -36,11 +36,11 @@
       0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
       0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
     var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-    var ml = msg.length, bitLenHi = Math.floor(ml / 0x20000000), bitLenLo = ml << 3, i, j;
+    var ml = msg.length, bitLenLo = (ml * 8) >>> 0, bitLenHi = Math.floor(ml / 4294967296), i, j;
     msg.push(128);
     while ((msg.length % 64) !== 56) msg.push(0);
-    for (i = 0; i < 4; i++) msg.push((bitLenLo >>> (i * 8)) & 255);
-    for (i = 0; i < 4; i++) msg.push((bitLenHi >>> (i * 8)) & 255);
+    for (i = 3; i >= 0; i--) msg.push((bitLenHi >>> (i * 8)) & 255);
+    for (i = 3; i >= 0; i--) msg.push((bitLenLo >>> (i * 8)) & 255);
     var w = new Array(64);
     for (j = 0; j < msg.length; j += 64) {
       for (i = 0; i < 16; i++) w[i] = (msg[j + i * 4] << 24) | (msg[j + i * 4 + 1] << 16) | (msg[j + i * 4 + 2] << 8) | msg[j + i * 4 + 3];
