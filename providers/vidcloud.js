@@ -176,6 +176,23 @@
     }).catch(function () { return null; });
   }
 
+  function qRank(q) {
+    q = String(q || "").toLowerCase();
+    if (q === "auto") return 99;
+    if (/2160|4k|uhd/.test(q)) return 5;
+    if (/1440|2k/.test(q)) return 4;
+    if (/1080|fhd/.test(q)) return 3;
+    if (/720|hd/.test(q)) return 2;
+    if (/480/.test(q)) return 1;
+    return 0;
+  }
+  function qSort(list) {
+    var hd = list.filter(function (s) { return qRank(s.quality) >= 3; });
+    var base = hd.length ? hd : list;
+    base.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+    return base;
+  }
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[VidCloud]";
     console.log(tag + " Fetching " + mediaType + " " + tmdbId + (season ? " S" + season + (episode ? "E" + episode : "") : ""));
@@ -229,7 +246,7 @@
             };
           });
           console.log(tag + " Found " + out.length + " streams (" + hit.region + ")");
-          return out;
+          return qSort(out);
         });
       });
     }).catch(function (err) {

@@ -153,6 +153,23 @@
     };
   }
 
+  function qRank(q) {
+    q = String(q || "").toLowerCase();
+    if (q === "auto") return 99;
+    if (/2160|4k|uhd/.test(q)) return 5;
+    if (/1440|2k/.test(q)) return 4;
+    if (/1080|fhd/.test(q)) return 3;
+    if (/720|hd/.test(q)) return 2;
+    if (/480/.test(q)) return 1;
+    return 0;
+  }
+  function qSort(list) {
+    var hd = list.filter(function (s) { return qRank(s.quality) >= 3; });
+    var base = hd.length ? hd : list;
+    base.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+    return base;
+  }
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[YTS]";
     console.log(tag + " Fetching " + mediaType + " " + tmdbId +
@@ -172,15 +189,23 @@
         display += " S" + pad2(season || 1) + "E" + pad2(episode || 1);
         var eps = list.filter(function (h) { return epMatch(h.title, season || 1, episode || 1); });
         var picked = eps.length ? eps : list.filter(function (h) { return seasonMatch(h.title, season || 1); });
-        picked.sort(function (a, b) { return (b.seeds || 0) - (a.seeds || 0); });
-        var streams = picked.slice(0, MAX_STREAMS).map(function (h) {
+        picked.sort(function (a, b) {
+          var r = qRank(parseQuality(b.title)) - qRank(parseQuality(a.title));
+          return r || ((b.seeds || 0) - (a.seeds || 0));
+        });
+        var hd = picked.filter(function (h) { return qRank(parseQuality(h.title)) >= 3; });
+        var streams = (hd.length ? hd : picked).slice(0, MAX_STREAMS).map(function (h) {
           return toStream(h, display + (eps.length ? "" : " Pack"));
         });
         console.log(tag + " Found " + streams.length + " streams");
         return streams;
       }
-      list.sort(function (a, b) { return (b.seeds || 0) - (a.seeds || 0); });
-      var out = list.slice(0, MAX_STREAMS).map(function (h) { return toStream(h, display); });
+      list.sort(function (a, b) {
+        var r = qRank(parseQuality(b.title)) - qRank(parseQuality(a.title));
+        return r || ((b.seeds || 0) - (a.seeds || 0));
+      });
+      var hd = list.filter(function (h) { return qRank(parseQuality(h.title)) >= 3; });
+      var out = (hd.length ? hd : list).slice(0, MAX_STREAMS).map(function (h) { return toStream(h, display); });
       console.log(tag + " Found " + out.length + " streams");
       return out;
     }).catch(function (err) {

@@ -1,12 +1,12 @@
 {
   "name": "Justelemir",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple ve Atlantic sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
       "name": "Dexter.pw",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "filename": "providers/dexterpw.js",
       "supportedTypes": [
         "movie",
@@ -18,7 +18,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
@@ -38,7 +38,7 @@
     {
       "id": "yts",
       "name": "YTS",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "YTS torrent provider (magnet, debrid gerektirir)",
       "filename": "providers/yts.js",
       "supportedTypes": [
@@ -57,7 +57,7 @@
     {
       "id": "vidcloud",
       "name": "VidCloud",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/vidcloud.js",
       "supportedTypes": [
         "movie",
@@ -75,7 +75,7 @@
     {
       "id": "mapple",
       "name": "Mapple",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "filename": "providers/mapple.js",
       "supportedTypes": [
         "movie",
@@ -94,7 +94,7 @@
     {
       "id": "atlantic",
       "name": "Atlantic",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "filename": "providers/atlantic.js",
       "supportedTypes": [
         "movie",
