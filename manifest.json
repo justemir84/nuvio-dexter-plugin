@@ -114,6 +114,24 @@
         "en",
         "hi"
       ]
+    },
+    {
+      "id": "vidcloud",
+      "name": "VidCloud",
+      "version": "1.0.0",
+      "filename": "providers/vidcloud.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ]
     }
   ]
 }
