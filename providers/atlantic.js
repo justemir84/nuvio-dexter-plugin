@@ -55,11 +55,13 @@
 
   function qualityOf(h, w) {
     h = parseInt(h, 10) || 0;
-    if (h >= 2160) return "2160p";
+    w = parseInt(w, 10) || 0;
+    if (h >= 2160 || w >= 3800) return "2160p";
     if (h >= 1080) return "1080p";
     if (h >= 720) return "720p";
     if (h >= 480) return "480p";
-    if (w && parseInt(w, 10) >= 1900) return "1080p";
+    if (w >= 1900) return "1080p";
+    if (w >= 1200) return "720p";
     return h + "p";
   }
 
@@ -147,8 +149,30 @@
               subtitles: subs, provider: "atlantic"
             });
           });
-          console.log(tag + " Found " + streams.length + " streams");
-          return streams;
+          var zurl = mediaType === "tv"
+            ? "https://zcdn.bluevelvet.space/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=tv&season=" + (season || 1) + "&episode=" + (episode || 1)
+            : "https://zcdn.bluevelvet.space/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=movie";
+          return fetchTimeout(zurl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: REF } }).then(function (rz) {
+            if (!rz.ok) throw new Error("zcdn " + rz.status);
+            return rz.json();
+          }).then(function (zj) {
+            if (!zj || !zj.ready || !zj.url) return [];
+            return fetchMaster(zj.url);
+          }).catch(function () { return []; }).then(function (zvars) {
+            (zvars || []).forEach(function (v) {
+              var q = qualityOf(v.h, v.w);
+              var c = codecOf(v.codecs);
+              streams.push({
+                name: "Atlantic - " + q + " (4K)",
+                title: display + "\n" + q + (c ? " | " + c : "") + " [HLS]" + (subLangs ? " | " + subLangs : ""),
+                url: v.url, quality: q, isM3u8: true, type: "hls",
+                headers: { Referer: REF, "User-Agent": UA },
+                subtitles: subs, provider: "atlantic"
+              });
+            });
+            console.log(tag + " Found " + streams.length + " streams");
+            return streams;
+          });
         });
       });
     }).catch(function (err) {

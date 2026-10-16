@@ -94,7 +94,7 @@
     {
       "id": "atlantic",
       "name": "Atlantic",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/atlantic.js",
       "supportedTypes": [
         "movie",
