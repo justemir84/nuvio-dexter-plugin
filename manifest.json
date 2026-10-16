@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Dexter.pw, IDLIX, KMMovies, YTS ve MovieBox kaynak sağlayıcıları",
   "scrapers": [
     {
@@ -131,6 +131,25 @@
       ],
       "contentLanguage": [
         "en"
+      ]
+    },
+    {
+      "id": "mapple",
+      "name": "Mapple",
+      "version": "1.0.0",
+      "filename": "providers/mapple.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en",
+        "hi"
       ]
     }
   ]
