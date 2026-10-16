@@ -155,7 +155,7 @@
 
   function qRank(q) {
     q = String(q || "").toLowerCase();
-    if (q === "auto") return 99;
+    if (q === "auto") return 2.5;
     if (/2160|4k|uhd/.test(q)) return 5;
     if (/1440|2k/.test(q)) return 4;
     if (/1080|fhd/.test(q)) return 3;
@@ -164,7 +164,7 @@
     return 0;
   }
   function qSort(list) {
-    var hd = list.filter(function (s) { return qRank(s.quality) >= 3; });
+    var hd = list.filter(function (s) { return qRank(s.quality) >= 2.5; });
     var base = hd.length ? hd : list;
     base.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
     return base;
@@ -193,7 +193,7 @@
           var r = qRank(parseQuality(b.title)) - qRank(parseQuality(a.title));
           return r || ((b.seeds || 0) - (a.seeds || 0));
         });
-        var hd = picked.filter(function (h) { return qRank(parseQuality(h.title)) >= 3; });
+        var hd = picked.filter(function (h) { return qRank(parseQuality(h.title)) >= 2.5; });
         var streams = (hd.length ? hd : picked).slice(0, MAX_STREAMS).map(function (h) {
           return toStream(h, display + (eps.length ? "" : " Pack"));
         });
@@ -204,7 +204,7 @@
         var r = qRank(parseQuality(b.title)) - qRank(parseQuality(a.title));
         return r || ((b.seeds || 0) - (a.seeds || 0));
       });
-      var hd = list.filter(function (h) { return qRank(parseQuality(h.title)) >= 3; });
+      var hd = list.filter(function (h) { return qRank(parseQuality(h.title)) >= 2.5; });
       var out = (hd.length ? hd : list).slice(0, MAX_STREAMS).map(function (h) { return toStream(h, display); });
       console.log(tag + " Found " + out.length + " streams");
       return out;
