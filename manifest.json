@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "description": "Dexter.pw, IDLIX, KMMovies, YTS ve MovieBox kaynak sağlayıcıları",
   "scrapers": [
     {
@@ -150,6 +150,24 @@
       "contentLanguage": [
         "en",
         "hi"
+      ]
+    },
+    {
+      "id": "atlantic",
+      "name": "Atlantic",
+      "version": "1.0.0",
+      "filename": "providers/atlantic.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
       ]
     }
   ]
