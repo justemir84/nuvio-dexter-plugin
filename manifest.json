@@ -205,7 +205,7 @@
     {
       "id": "vidrift",
       "name": "VidRift",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Orion altyapısı; HEVC HLS, çok dilli dublaj seçenekleri",
       "filename": "providers/vidrift.js",
       "supportedTypes": [
