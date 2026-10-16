@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.1.1",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies sağlayıcıları",
+  "version": "2.2.0",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies, VixSrc ve VidRock sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -274,6 +274,45 @@
       "hasSettings": false,
       "formats": [
         "mp4"
+      ],
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "vixsrc",
+      "name": "VixSrc",
+      "version": "1.0.0",
+      "description": "İtalyanca/İngilizce çift sesli HLS; 6+ dilde VTT altyazı",
+      "filename": "providers/vixsrc.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en",
+        "it"
+      ]
+    },
+    {
+      "id": "vidrock",
+      "name": "VidRock",
+      "version": "1.0.0",
+      "description": "9 sunucu (Luna/Orion/…); 1080p'ye kadar HLS",
+      "filename": "providers/vidrock.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
       ],
       "contentLanguage": [
         "en"

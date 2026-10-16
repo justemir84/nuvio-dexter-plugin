@@ -30,6 +30,8 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | VidBolt | Film + Dizi | HLS | 1080p'ye kadar; HLS içinde 10 dilde ses + 5 altyazı |
 | ThugTV | Film + Dizi | HLS + MP4 | Castle/Bishop/Knight sunucuları; çok dilli altyazı |
 | 123Movies | Film + Dizi | MP4 | aoneroom altyapısı; 1080p'ye kadar, SRT altyazı |
+| VixSrc | Film + Dizi | HLS | İtalyanca/İngilizce çift sesli; 6+ dilde VTT altyazı |
+| VidRock | Film + Dizi | HLS | Luna/Orion dahil 9 sunucu; 1080p'ye kadar HLS |
 
 ## Liste düzeni
 
