@@ -22,6 +22,7 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | Mapple | Film + Dizi | HLS | Çok sunuculu, ilk açılışta PoW çözümü birkaç saniye sürebilir |
 | Atlantic | Film + Dizi | HLS | 4K varyantlar dahil, İngilizce altyazı destekli |
 | Streamo | Film + Dizi | HLS | İngilizce içerik |
+| VAplayer | Film + Dizi | HLS | İngilizce içerik |
 
 ## Liste düzeni
 
