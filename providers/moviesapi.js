@@ -9,6 +9,7 @@
 
   var API = "https://moviesapi.to/api/vidora/v1";
   var SITE = "https://moviesapi.to/";
+  var ORIGIN = "https://moviesapi.to";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var KEY = "3a67e8866ae1d2bb9e81fe7f73315a56eb3bdf5e3e755c7554c8be6910aa6b13";
   var TIMEOUT = 12000;
@@ -101,7 +102,7 @@
       subs = buildSubs(allTracks);
       var pick = d.sources.slice(0, MAX_SOURCES);
       return Promise.all(pick.map(function (src) {
-        return fetchTimeout(src.url, { headers: { "User-Agent": UA, Referer: SITE } })
+        return fetchTimeout(src.url, { headers: { "User-Agent": UA, Referer: SITE, Origin: ORIGIN } })
           .then(function (m) { return m.ok ? m.text() : ""; }, function () { return ""; })
           .then(function (txt) { return { src: src, quality: txt ? qualityFromMaster(txt) : "Auto" }; });
       }));
@@ -117,7 +118,7 @@
           quality: item.quality,
           isM3u8: true,
           type: "hls",
-          headers: { Referer: SITE, "User-Agent": UA },
+          headers: { Referer: SITE, Origin: ORIGIN, "User-Agent": UA },
           subtitles: subs,
           provider: "moviesapi"
         });
