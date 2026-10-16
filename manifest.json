@@ -38,7 +38,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
