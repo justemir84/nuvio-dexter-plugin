@@ -26,6 +26,8 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | MoviesAPI | Film + Dizi | HLS | VidSpark altyapısı; 33+ dilde VTT altyazı |
 | PopWatch | Film + Dizi | HLS | 7 kaynaklı scraper ağı (Laylah, Azalea vb.); çok dilli altyazı |
 | Vidlove | Film + Dizi | HLS | moviebox2/vidapi kaynak ağı; 4K'ya kadar, çok dilli VTT altyazı |
+| VidRift | Film + Dizi | HLS | Orion altyapısı; HEVC, çok dilli dublaj seçenekleri |
+| VidBolt | Film + Dizi | HLS | 1080p'ye kadar; HLS içinde 10 dilde ses + 5 altyazı |
 
 ## Liste düzeni
 
