@@ -23,6 +23,8 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | Atlantic | Film + Dizi | HLS | 4K varyantlar dahil, İngilizce altyazı destekli |
 | Streamo | Film + Dizi | HLS | İngilizce içerik |
 | VAplayer | Film + Dizi | HLS | İngilizce içerik |
+| MoviesAPI | Film + Dizi | HLS | VidSpark altyapısı; 33+ dilde VTT altyazı |
+| PopWatch | Film + Dizi | HLS | 7 kaynaklı scraper ağı (Laylah, Azalea vb.); çok dilli altyazı |
 
 ## Liste düzeni
 
