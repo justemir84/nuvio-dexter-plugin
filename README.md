@@ -28,6 +28,8 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | Vidlove | Film + Dizi | HLS | moviebox2/vidapi kaynak ağı; 4K'ya kadar, çok dilli VTT altyazı |
 | VidRift | Film + Dizi | HLS | Orion altyapısı; HEVC, çok dilli dublaj seçenekleri |
 | VidBolt | Film + Dizi | HLS | 1080p'ye kadar; HLS içinde 10 dilde ses + 5 altyazı |
+| ThugTV | Film + Dizi | HLS + MP4 | Castle/Bishop/Knight sunucuları; çok dilli altyazı |
+| 123Movies | Film + Dizi | MP4 | aoneroom altyapısı; 1080p'ye kadar, SRT altyazı |
 
 ## Liste düzeni
 

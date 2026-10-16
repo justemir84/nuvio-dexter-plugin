@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.0.9",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift ve VidBolt sağlayıcıları",
+  "version": "2.1.0",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -235,6 +235,45 @@
       "hasSettings": false,
       "formats": [
         "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "thugtv",
+      "name": "ThugTV",
+      "version": "1.0.0",
+      "description": "Castle/Bishop/Knight sunucuları; HLS + MP4, çok dilli altyazı",
+      "filename": "providers/thugtv.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "aoneroom",
+      "name": "123Movies",
+      "version": "1.0.0",
+      "description": "aoneroom altyapısı; 1080p'ye kadar MP4, SRT altyazı",
+      "filename": "providers/aoneroom.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "mp4"
       ],
       "contentLanguage": [
         "en"
