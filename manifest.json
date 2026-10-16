@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic ve Streamo sağlayıcıları",
   "scrapers": [
     {
@@ -112,7 +112,7 @@
     {
       "id": "streamo",
       "name": "Streamo",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/streamo.js",
       "supportedTypes": [
         "movie",

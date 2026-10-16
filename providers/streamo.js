@@ -70,6 +70,16 @@
     if (/360/.test(s)) return "360p";
     return "HD";
   }
+  function qRank(q) {
+    q = String(q || "").toLowerCase();
+    if (q === "auto") return 2.5;
+    if (/2160|4k|uhd/.test(q)) return 5;
+    if (/1440|2k/.test(q)) return 4;
+    if (/1080|fhd/.test(q)) return 3;
+    if (/720|hd/.test(q)) return 2;
+    if (/480/.test(q)) return 1;
+    return 0;
+  }
 
   function tmdbLookup(tmdbId, mediaType) {
     var type = mediaType === "tv" ? "tv" : "movie";
@@ -160,6 +170,7 @@
         });
       });
       return chain.then(function (all) {
+        all.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
         console.log(tag + " Found " + all.length + " streams");
         return all;
       });
