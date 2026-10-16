@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies sağlayıcıları",
   "scrapers": [
     {
