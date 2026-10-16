@@ -140,6 +140,14 @@
       var three = slugify(words.slice(0, 3).join(" "));
       if (three && queries.indexOf(three) === -1) queries.push(three);
     }
+    // Yeni sitede tireli çok kelimeli slug 0 sonuç verebiliyor; ayırt edici
+    // tek kelimeleri de dene (uzundan kısaya, pickBest zaten eler).
+    var singles = words.filter(function (w) { return w.length > 3; })
+      .sort(function (a, b) { return b.length - a.length; });
+    singles.forEach(function (w) {
+      var q = slugify(w);
+      if (q && queries.indexOf(q) === -1) queries.push(q);
+    });
     var chain = Promise.resolve(null);
     queries.forEach(function (q) {
       chain = chain.then(function (found) {
@@ -184,9 +192,9 @@
     return out;
   }
 
-  // --- w3 page html -> watch-online / pixeldrain / skydrop hrefs ---
+  // --- w3 page html -> watch-online / pixeldrain / skydrop / hubcloud hrefs ---
   function parseW3(html) {
-    var res = { watch: null, pixeldrain: [], skydrop: [] };
+    var res = { watch: null, pixeldrain: [], skydrop: [], hubcloud: [] };
     var m = html.match(/https:\/\/z1\.kmphotos\.cv\/online\.php\?file=[^"'\s<]+/);
     if (m) res.watch = m[0];
     var re2 = /https:\/\/pixeldrain\.com\/u\/([A-Za-z0-9]+)/g;
@@ -198,6 +206,11 @@
     var s;
     while ((s = re3.exec(html)) !== null) {
       if (res.skydrop.indexOf(s[1]) === -1) res.skydrop.push(s[1]);
+    }
+    var re4 = /(https:\/\/hubcloud\.foo\/drive\/[A-Za-z0-9]+)/g;
+    var hc;
+    while ((hc = re4.exec(html)) !== null) {
+      if (res.hubcloud.indexOf(hc[1]) === -1) res.hubcloud.push(hc[1]);
     }
     return res;
   }
@@ -313,6 +326,9 @@
             return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : [];
           }));
         }
+        parsed.hubcloud.slice(0, 2).forEach(function (hc) {
+          jobs.push(resolveHubcloud(hc, w3.url, w3.quality, w3.size, w3.label));
+        });
         return Promise.all(jobs).then(function (arr) {
           var flat = [];
           arr.forEach(function (a) { flat = flat.concat(a); });
@@ -333,6 +349,40 @@
       });
     });
     return chain;
+  }
+
+  // --- hubcloud: drive page -> gamerxyt redirector -> direct file (workers.dev) ---
+  function resolveHubcloud(hubUrl, referer, quality, size, label) {
+    return fetchTimeout(hubUrl, { headers: headers(referer) })
+      .then(function (r) {
+        if (!r.ok) throw new Error("hub " + r.status);
+        return r.text();
+      })
+      .then(function (html) {
+        var m = html.match(/https:\/\/gamerxyt\.com\/hubcloud\.php\?[^"'\s<]+/);
+        if (!m) return [];
+        return fetchTimeout(m[0], { headers: headers(hubUrl) }).then(function (r2) {
+          if (!r2.ok) throw new Error("hub2 " + r2.status);
+          return r2.text();
+        });
+      })
+      .then(function (html) {
+        if (!html) return [];
+        var found = [];
+        var re = /href="(https?:\/\/[^"]+)"/gi;
+        var a;
+        while ((a = re.exec(html)) !== null) {
+          var u = a[1];
+          if (found.indexOf(u) === -1 &&
+              /\.(mkv|mp4|avi|mov|webm)(\?|#|$)/i.test(u) &&
+              isFileUrl(u)) {
+            found.push({ url: u, via: "HubCloud", quality: quality, size: size, label: label });
+            if (found.length >= 3) break;
+          }
+        }
+        return found;
+      })
+      .catch(function () { return []; });
   }
 
   // --- tv: episodes page -> Episode N skydrop link ---
