@@ -246,17 +246,44 @@
     }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
   }
 
-  function probeQuality(url) {
+  function codecTag(cds, rng) {
+    cds = String(cds || "").toLowerCase();
+    var dv = /dvh[1e]|dvhe|dav1/.test(cds) ? "DV" : "";
+    var v = dv ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : "")));
+    var hdr = !dv && /^(PQ|HLG)$/i.test(String(rng || "")) ? "HDR" : "";
+    var a = /ec-3|eac3|ddp/.test(cds) ? "DDP" : (/ac-3/.test(cds) ? "DD" : (/mp4a|aac/.test(cds) ? "AAC" : ""));
+    return { v: v, tag: [v, dv || hdr, a].filter(function (x) { return !!x; }).join(" ") };
+  }
+
+  function probeInfo(url) {
     return fetchTimeout(url, { headers: MEDIA_HEADERS }).then(function (r) {
       return r.ok ? r.text() : "";
     }, function () { return ""; }).then(function (txt) {
-      if (!txt || txt.indexOf("#EXTM3U") !== 0) return "Auto";
+      if (!txt || txt.indexOf("#EXTM3U") !== 0) return { q: "Auto", v: "", tag: "" };
       var maxH = 0;
       (txt.match(/RESOLUTION=\d+x(\d+)/g) || []).forEach(function (rs) {
         var h = Number((rs.match(/(\d+)$/) || [])[1]) || 0;
         if (h > maxH) maxH = h;
       });
-      return maxH ? qualityFromHeight(maxH) : "Auto";
+      var bestLine = "";
+      if (txt.indexOf("#EXT-X-STREAM-INF") !== -1) {
+        var lines = txt.split(/\r?\n/), curLine = "", curH = -1, i;
+        for (i = 0; i < lines.length; i++) {
+          var line = lines[i].trim();
+          if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
+            curLine = line;
+          } else if (line && line.charAt(0) !== "#" && curLine) {
+            var m = curLine.match(/RESOLUTION=\d+x(\d+)/);
+            var hh = m ? parseInt(m[1], 10) : 0;
+            if (hh >= curH) { curH = hh; bestLine = curLine; }
+            curLine = "";
+          }
+        }
+      }
+      var cds = (bestLine.match(/CODECS="([^"]+)"/i) || [])[1] || "";
+      var rng = (bestLine.match(/VIDEO-RANGE=([A-Z0-9]+)/i) || [])[1] || "";
+      var ct = codecTag(cds, rng);
+      return { q: maxH ? qualityFromHeight(maxH) : "Auto", v: ct.v, tag: ct.tag };
     });
   }
 
@@ -309,7 +336,10 @@
         if (c.q) return null;
         var isHls = c.type === "hls" || /\.m3u8(\?|$)/.test(c.url) || c.type === "";
         if (!isHls) { c.q = "Auto"; return null; }
-        return probeQuality(c.url).then(function (q) { c.q = q || "Auto"; }, function () { c.q = "Auto"; });
+        return probeInfo(c.url).then(function (info) {
+          c.q = (info && info.q) || "Auto";
+          if (info) { c.v = info.v; c.tag = info.tag; }
+        }, function () { c.q = "Auto"; });
       }).filter(function (x) { return x; });
       return pAll(probes).then(function () { return cands; });
     }).then(function (cands) {
@@ -317,9 +347,11 @@
         var q = c.q || "Auto";
         var isHls = c.type === "hls" || /\.m3u8(\?|$)/.test(c.url);
         var lang = c.lang && c.lang !== "English" ? " (" + c.lang + ")" : "";
+        var vtag = c.v ? " " + c.v : "";
+        var ttag = c.tag ? " " + c.tag : "";
         return {
-          name: "VidRock - " + c.server + lang + " " + q,
-          title: display + "\n" + c.server + lang + " " + q,
+          name: "VidRock - " + c.server + lang + " " + q + vtag,
+          title: display + "\n" + c.server + lang + " " + q + ttag,
           url: c.url,
           quality: q,
           isM3u8: isHls,
