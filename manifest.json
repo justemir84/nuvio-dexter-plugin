@@ -42,8 +42,7 @@
       "description": "YTS torrent provider (magnet, debrid gerektirir)",
       "filename": "providers/yts.js",
       "supportedTypes": [
-        "movie",
-        "tv"
+        "movie"
       ],
       "enabled": true,
       "hasSettings": false,
