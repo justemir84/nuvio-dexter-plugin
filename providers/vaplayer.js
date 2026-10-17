@@ -33,12 +33,15 @@
   function parseRelease(s) {
     try { s = decodeURIComponent(s); } catch (e) {}
     s = " " + String(s || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
-    var codec = /x265|hevc|h265/.test(s) ? "HEVC x265" : (/x264|h264|avc/.test(s) ? "H.264" : "");
+    var codec = /x265|hevc|h265|h\.265/.test(s) ? "HEVC x265" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : "");
     var depth = /10bit|10 bit|hi10/.test(s) ? "10bit" : "";
     var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : "")));
     var audio = /truehd/.test(s) ? "TrueHD" : (/atmos/.test(s) ? "Atmos" : (/dts/.test(s) ? "DTS" : ""));
     var ach = /ddp.?5\.1|dd.?5\.1|ac.?3|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : "");
-    return { codec: codec, depth: depth, hdr: hdr, audio: (audio + (ach ? " " + ach : "")).trim() };
+    var net = /\bnf\b|netflix/.test(s) ? "NF " : (/\bamzn\b|amazon/.test(s) ? "AMZN " : (/\batvp\b|apple/.test(s) ? "ATVP " : (/\bdsnp\b|disney/.test(s) ? "DSNP " : "")));
+    var src = /remux/.test(s) ? "REMUX" : (/blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/web.?rip/.test(s) ? "WEBRip" : (/\bhdtv\b/.test(s) ? "HDTV" : ""))));
+    var dual = /\bdual\b/.test(s) ? "Dual Audio" : "";
+    return { codec: codec, depth: depth, hdr: hdr, audio: (audio + (ach ? " " + ach : "")).trim(), src: (net + src).trim(), dual: dual };
   }
 
   function parseQuality(v) {
@@ -131,6 +134,8 @@
       if (rel.codec || rel.depth) extra.push((rel.codec + " " + rel.depth).trim());
       var aura = (rel.hdr + " " + rel.audio).trim();
       if (aura) extra.push(aura);
+      if (rel.dual) extra.push(rel.dual);
+      if (rel.src) extra.push(rel.src);
       extra = extra.join(" | ");
       // Isim satiri: kalite + codec (varsa) -> "VAplayer - 1080p H.264"
       var codecShort = rel.codec === "HEVC x265" ? "HEVC" : rel.codec;
