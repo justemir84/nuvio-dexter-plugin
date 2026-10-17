@@ -42,7 +42,7 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 ## Sorun giderme
 
 - **Liste boş:** Önce repo adresinin güncel olduğunu kontrol edin (yukarıdaki adres). Sağlayıcıyı kapatıp açın.
-- **Buffering:** Başka bir varyant deneyin (özellikle `(Direct)` etiketliler). Dizi paketlerindeki bazı linkler kısa süreli olabilir(120sn), listeyi yenileyip hemen oynatın.
+- **Buffering:** Başka bir varyant deneyin (özellikle `(Direct)` etiketliler); bazı linkler kısa süreli olabilir, listeyi yenileyip hemen oynatın.
 - **Hiçbiri çalışmıyorsa:** Telegram'dan (en üstteki adres) film/dizi adı + sağlayıcı ile bildirin.
 
 ## Yasal uyarı
