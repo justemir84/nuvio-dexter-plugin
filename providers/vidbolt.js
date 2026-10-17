@@ -1,12 +1,15 @@
 /**
  * vidbolt - VidBolt (vidbolt.xyz) saglayicisi - Nuvio
  * Akis: TMDB -> /api/resolve?type={movie|tv}&id=..[&season=..&episode=..] JSON
- *   -> stream.sources[] -> HLS master (1080p/720p/480p + coklu ses + 5 altyazi)
+ *   -> stream.sources[] -> HLS master (1080p/720p/480p + coklu ses + altyazi)
  *   -> medya istekleri Referer: https://vidbolt.xyz/ ile cekilir.
  * Sunucular: orion (img.rousav.tech), quantum/vega (proxy.vidbolt.xyz),
  *   callisto (dash-hls-bridge workers -> sacdn h265). Yedekli: bos donerse
  *   sirasiyla quantum -> vega -> callisto -> fastva denenir.
- * Altyazilar HLS master icinde gruplu gelir (oynatici otomatik sunar).
+ * Kaynak dili: callisto kaynaklari "language" alanini doner; orion tek master
+ *   icinde EXT-X-MEDIA ile coklu ses/altyazi tasir, gercek dil listesi baslığa
+ *   yazilir. Orijinal/Ingilizce kaynak kosulsuz ilk sirada gosterilir; "mirror"
+ *   etiketi yerine dil adi yazilir.
  * Hermes-safe: Promise chains only, no deps.
  */
 (function () {
@@ -71,6 +74,25 @@
     return out;
   }
 
+  // Inline HLS master'dan ses/altyazi adlarini cikar (orion kaynaklari).
+  function mediaInfoFromMaster(txt) {
+    var out = { audio: [], subs: [] };
+    if (!txt) return out;
+    var re = /#EXT-X-MEDIA:TYPE=(AUDIO|SUBTITLES)([^\n]*)/g;
+    var m;
+    while ((m = re.exec(txt)) !== null) {
+      var nm = m[2].match(/NAME="([^"]+)"/);
+      if (!nm) continue;
+      var arr = m[1] === "AUDIO" ? out.audio : out.subs;
+      if (arr.indexOf(nm[1]) === -1) arr.push(nm[1]);
+    }
+    return out;
+  }
+
+  function isEnglish(s) {
+    return /english|original/i.test(String(s || ""));
+  }
+
   function tmdbLookup(tmdbId, isTv) {
     var path = isTv ? "/tv/" : "/movie/";
     return fetchTimeout("https://api.themoviedb.org/3" + path + tmdbId + "?api_key=" + TMDB_KEY + "&language=en-US", {
@@ -114,22 +136,48 @@
     }).then(function (res) {
       var found = (res && res.sources) || [];
       var server = (res && res.server) || "";
-      var out = found.slice(0, MAX_STREAMS).map(function (x, i) {
+      var entries = found.map(function (x, i) {
         var q = String(x.quality || x.name || "").trim() || "Auto";
-        var label = q === "Auto" ? "Auto" : q;
+        var kind = String(x.kind || "hls").toLowerCase();
+        var lang = String(x.language || "").trim();
+        var mi = mediaInfoFromMaster(x.master || "");
+        if (!lang && mi.audio.length === 1) lang = mi.audio[0];
+        return { x: x, i: i, q: q, kind: kind, lang: lang, audio: mi.audio, subs: mi.subs };
+      });
+      // Orijinal/Ingilizce kaynak kosulsuz ilk sirada (kaliteden bagimsiz);
+      // sonra kalite, sonra kaynak sirasi. Ilk satir her zaman orijinal olsun.
+      entries.sort(function (a, b) {
+        var ea = isEnglish(a.lang) ? 0 : 1;
+        var eb = isEnglish(b.lang) ? 0 : 1;
+        if (ea !== eb) return ea - eb;
+        var d = qRank(b.q) - qRank(a.q);
+        if (d) return d;
+        return a.i - b.i;
+      });
+      var seenNames = {};
+      var out = entries.slice(0, MAX_STREAMS).map(function (en) {
+        var label = en.q === "Auto" ? "Auto" : en.q;
+        var name = "VidBolt - " + (en.lang ? en.lang + " " : "") + label;
+        if (seenNames[name]) { seenNames[name]++; name = name + " (" + seenNames[name] + ")"; }
+        else seenNames[name] = 1;
+        var meta = [];
+        if (en.audio.length > 1) meta.push("ses: " + en.audio.join(", "));
+        else if (en.audio.length === 1 && en.lang !== en.audio[0]) meta.push("ses: " + en.audio.join(", "));
+        if (en.subs.length) meta.push("altyazi: " + en.subs.join(", "));
         return {
-          name: "VidBolt - " + label + (i > 0 ? " (mirror " + (i + 1) + ")" : ""),
-          title: display + "\n" + label + " HLS [VidBolt" + (server ? " · " + server : "") + "] | 10 ses + 5 altyazi",
-          url: x.url,
-          quality: q,
-          isM3u8: true,
-          type: "hls",
+          name: name,
+          title: display + "\n" + label + (en.lang ? " " + en.lang : "") +
+            " [" + (en.kind === "mp4" ? "MP4" : "HLS") + (server ? " · " + server : "") + "]" +
+            (meta.length ? " | " + meta.join(" | ") : ""),
+          url: en.x.url,
+          quality: en.q,
+          isM3u8: en.kind !== "mp4",
+          type: en.kind === "mp4" ? "mp4" : "hls",
           headers: { Referer: REF, "User-Agent": UA },
           subtitles: [],
           provider: "vidbolt"
         };
       });
-      out.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
       console.log(tag + " Found " + out.length + " streams");
       return out;
     }).catch(function (err) {
