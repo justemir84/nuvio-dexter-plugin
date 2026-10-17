@@ -2,9 +2,12 @@
  * kmmovies - KMMovies provider for Nuvio
  * Flow: TMDB -> title/year -> SITE_DOMAIN search -> detail page
  *   movie: w3.magiclinks.lol links -> WATCH ONLINE (r2.dev direct)
- *          / pixeldrain api direct / skydrop POST -> googleusercontent direct
- *   tv: episodes.magiclinks.lol season+quality pages -> Episode N skydrop
- *       -> POST /fetch/ -> googleusercontent direct
+ *          / pixeldrain api direct / skydrop -> googleusercontent direct
+ *   tv: episodes.magiclinks.lol (<slug>-sNN-<quality>) -> Episode N
+ *       -> skydrop -> googleusercontent direct (per-episode files)
+ *       season packs (w3 combined/zip) as last-resort fallback
+ * Skydrop chain: GET download.php (session cookie) -> POST /resolve/ (JSON)
+ *   -> GET /id/ (file-ready page) -> POST /fetch/ (302 -> direct file)
  *
  * Hermes-safe: Promise chains only, no async/await, no generators.
  */
@@ -161,14 +164,19 @@
   }
 
   // --- detail page: collect w3 + episodes links with labels + season section ---
-  function parseDetail(html) {
+  function parseDetail(html, pageUrl) {
     var out = { w3: [], episodes: [] };
-    // season section headings to attribute packs to seasons
-    var heads = [];
-    var hre = /Season\s+(\d+)\s*\(\d+\s*eps?\)/gi;
-    var hm;
-    while ((hm = hre.exec(html)) !== null) {
-      heads.push({ season: parseInt(hm[1], 10), index: hm.index });
+    // Season attribution: content tabs are data-type="episodes-N|combined-N|zip-N"
+    // (N = 0-based section index). Page slug says which seasons it covers
+    // (e.g. "breaking-bad-s01-s05-..."); map section index -> real season.
+    var startS = null;
+    var um = String(pageUrl || "").match(/(?:^|[-/])s(\d{1,2})(?:-s\d{1,2})?(?=[-/]|$)/i);
+    if (um) startS = parseInt(um[1], 10);
+    var marks = [];
+    var mre = /data-type="(?:episodes|combined|zip)-(\d+)"/gi;
+    var mk;
+    while ((mk = mre.exec(html)) !== null) {
+      marks.push({ index: mk.index, num: parseInt(mk[1], 10) });
     }
     var re = /<a[^>]+href="(https:\/\/(?:w3|episodes)\.magiclinks\.lol\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     var m;
@@ -179,10 +187,11 @@
       var size = "";
       var sm = label.match(/(\d+(?:\.\d+)?\s*(?:MB|GB))/i);
       if (sm) size = sm[1];
-      var season = null;
-      for (var h = 0; h < heads.length; h++) {
-        if (heads[h].index < m.index) season = heads[h].season;
+      var lastNum = null;
+      for (var h = 0; h < marks.length; h++) {
+        if (marks[h].index < m.index) lastNum = marks[h].num;
       }
+      var season = (lastNum === null || startS === null) ? null : startS + lastNum;
       if (/^https:\/\/w3\.magiclinks\.lol\//.test(url)) {
         out.w3.push({ url: url, label: label, quality: q, size: size, season: season });
       } else {
@@ -230,7 +239,10 @@
       .catch(function () { return null; });
   }
 
-  // --- skydrop: GET (redirects to /id/) -> single POST /fetch/ -> googleusercontent ---
+  // --- skydrop (2-stage): GET download.php (session cookie)
+  //   -> POST /resolve/ -> JSON { success, ready_url } (pending/busy -> poll)
+  //   -> GET ready_url page (/id/, "file ready") -> POST /fetch/
+  //   -> 302 Location = direct file (googleusercontent)
   function resolveSkydrop(skyUrl) {
     var origin;
     try {
@@ -238,6 +250,7 @@
       origin = u.protocol + "//" + u.host;
     } catch (e) { return Promise.resolve(null); }
     var jar = {};
+    var landingUrl = skyUrl;
     function storeCookies(r) {
       try {
         if (r && r.headers && typeof r.headers.getSetCookie === "function") {
@@ -254,39 +267,70 @@
       for (var k in jar) parts.push(k + "=" + jar[k]);
       return parts.join("; ");
     }
-    function get(url, referer) {
+    function hdr(referer, extra) {
       var h = headers(referer);
       var c = cookieHeader();
       if (c) h["Cookie"] = c;
-      return fetchTimeout(url, { headers: h }).then(function (r) {
-        storeCookies(r);
-        return r.text().then(function (t) { return { res: r, text: t }; });
-      });
+      if (extra) for (var k in extra) h[k] = extra[k];
+      return h;
     }
-    // 1) landing page (download.php?id= -> follows to /id/)
-    return get(skyUrl, BASE + "/").then(function (landed) {
-      var pageUrl = (landed.res && landed.res.url) || skyUrl;
-      var h = headers(pageUrl);
-      var c = cookieHeader();
-      if (c) h["Cookie"] = c;
-      h["Content-Type"] = "application/x-www-form-urlencoded";
-      return fetchTimeout(origin + "/fetch/", {
-        method: "POST",
-        headers: h,
-        body: "",
-        redirect: "manual"
-      }).then(function (r) {
-        storeCookies(r);
-        var loc = null;
-        try { loc = r.headers.get("location"); } catch (e) {}
-        if (loc) {
-          if (loc.charAt(0) === "/") loc = origin + loc;
-          return isFileUrl(loc) ? loc : null;
-        }
-        if (r.url && r.url !== origin + "/fetch/" && /^https?:\/\//.test(r.url)) {
-          return isFileUrl(r.url) ? r.url : null;
-        }
-        return null;
+    function wait(ms) {
+      return new Promise(function (res) { setTimeout(res, ms); });
+    }
+    // 1) landing page sets the download session cookie
+    return fetchTimeout(skyUrl, { headers: hdr(BASE + "/") }).then(function (landed) {
+      storeCookies(landed);
+      landingUrl = (landed && landed.url) || skyUrl;
+      // 2) POST /resolve/ -> JSON
+      function tryResolve(count) {
+        return fetchTimeout(origin + "/resolve/", {
+          method: "POST",
+          headers: hdr(landingUrl, { "Origin": origin }),
+          body: ""
+        }).then(function (r) {
+          storeCookies(r);
+          return r.text().then(function (t) {
+            var j = null;
+            try { j = JSON.parse(t); } catch (e) { return null; }
+            if (j && j.ready_url) return j.ready_url;
+            if (count < 4 && j && (j.pending || j.busy)) {
+              var ms2 = j.poll_after_ms || j.retry_after_ms ||
+                (j.auto_refresh && j.auto_refresh.retry_after_ms) || 2500;
+              return wait(Math.min(ms2 || 2500, 5000)).then(function () { return tryResolve(count + 1); });
+            }
+            return null;
+          });
+        }, function () { return null; });
+      }
+      return tryResolve(0);
+    }).then(function (ready) {
+      if (!ready) return null;
+      // some files may resolve straight to the file
+      if (/^https?:\/\//.test(ready) && ready.indexOf("skydrop") === -1 && isFileUrl(ready)) return ready;
+      var readyAbs = ready.indexOf("http") === 0 ? ready : origin + ready;
+      // 3) file-ready page (usually /id/)
+      return fetchTimeout(readyAbs, { headers: hdr(landingUrl) }).then(function (pg) {
+        storeCookies(pg);
+        var pgUrl = (pg && pg.url) || readyAbs;
+        // 4) form submit -> 302 Location = direct file
+        return fetchTimeout(origin + "/fetch/", {
+          method: "POST",
+          headers: hdr(pgUrl, { "Origin": origin, "Content-Type": "application/x-www-form-urlencoded" }),
+          body: "",
+          redirect: "manual"
+        }).then(function (r) {
+          storeCookies(r);
+          var loc = null;
+          try { loc = r.headers.get("location"); } catch (e) {}
+          if (loc) {
+            if (loc.charAt(0) === "/") loc = origin + loc;
+            return isFileUrl(loc) ? loc : null;
+          }
+          if (r.url && r.url !== origin + "/fetch/" && /^https?:\/\//.test(r.url)) {
+            return isFileUrl(r.url) ? r.url : null;
+          }
+          return null;
+        });
       });
     }).catch(function () { return null; });
   }
@@ -297,8 +341,7 @@
     return true;
   }
 
-  // resolve one w3 link into 0..n direct streams
-  // tv packs skip skydrop (JS-gated interstitial, unresolvable without a browser)
+  // resolve one w3 link into 0..n direct streams (R2 / Pixeldrain / HubCloud / Skydrop)
   function resolveW3Link(w3, referer, allowSkydrop) {
     return fetchTimeout(w3.url, { headers: headers(referer) })
       .then(function (r) {
@@ -316,23 +359,18 @@
         parsed.pixeldrain.slice(0, 1).forEach(function (pd) {
           jobs.push(Promise.resolve([{ url: pd, via: "Pixeldrain", quality: w3.quality, size: w3.size, label: w3.label }]));
         });
-        if (allowSkydrop !== false && !parsed.watch && parsed.pixeldrain.length === 0 && parsed.skydrop.length > 0) {
-          jobs.push(resolveSkydrop(parsed.skydrop[0]).then(function (direct) {
-            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : [];
-          }));
-        }
-        if (!jobs.length && allowSkydrop !== false && parsed.skydrop.length > 0) {
-          jobs.push(resolveSkydrop(parsed.skydrop[0]).then(function (direct) {
-            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : [];
-          }));
-        }
         parsed.hubcloud.slice(0, 2).forEach(function (hc) {
           jobs.push(resolveHubcloud(hc, w3.url, w3.quality, w3.size, w3.label));
         });
         return Promise.all(jobs).then(function (arr) {
           var flat = [];
           arr.forEach(function (a) { flat = flat.concat(a); });
-          return flat;
+          if (flat.length) return flat;
+          // last resort: skydrop (download.php -> /resolve/ -> /id/ -> /fetch/)
+          if (allowSkydrop === false || !parsed.skydrop.length) return flat;
+          return resolveSkydrop(parsed.skydrop[0]).then(function (direct) {
+            return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : flat;
+          });
         });
       })
       .catch(function () { return []; });
@@ -385,7 +423,23 @@
       .catch(function () { return []; });
   }
 
-  // --- tv: episodes page -> Episode N skydrop link ---
+  // --- tv: episodes page -> Episode N link ---
+  function findEpisodeLink(html, episode) {
+    var want = parseInt(episode, 10);
+    var parts = String(html).split(/<div class="ep-row"/i);
+    for (var i = 1; i < parts.length; i++) {
+      var seg = parts[i];
+      var nm = seg.match(/<span class="ep-name">\s*Episode\s*0?(\d+)/i);
+      if (!nm || parseInt(nm[1], 10) !== want) continue;
+      var sk = seg.match(/(https:\/\/w\d+\.skydrop\.sbs\/download\.php\?id=[^"'\s<]+)/);
+      if (sk) return sk[1];
+      var fm = seg.match(/href="(https?:\/\/[^"]+\.(?:mkv|mp4)[^"]*)"/i);
+      if (fm) return fm[1];
+      return null;
+    }
+    return null;
+  }
+
   function resolveEpisode(epPageUrl, episode, referer) {
     return fetchTimeout(epPageUrl, { headers: headers(referer) })
       .then(function (r) {
@@ -393,31 +447,14 @@
         return r.text();
       })
       .then(function (html) {
-        var ep = parseInt(episode, 10);
-        var patterns = [
-          new RegExp("Episode\\s*0?" + ep + "[^<]*<\\/[^>]+>\\s*<a[^>]+href=\"([^\"]+)\"", "i"),
-          new RegExp("Episode\\s*0?" + ep + "\\s*<a[^>]+href=\"([^\"]+)\"", "i")
-        ];
-        var m = null, i;
-        for (i = 0; i < patterns.length; i++) {
-          m = html.match(patterns[i]);
-          if (m) break;
+        var link = findEpisodeLink(html, episode);
+        if (!link) return null;
+        if (/skydrop\.sbs/.test(link)) {
+          return resolveSkydrop(link).then(function (direct) {
+            return direct ? { url: direct, via: "Skydrop" } : null;
+          });
         }
-        if (!m) {
-          // generic: all skydrop links on page, pick by order
-          var all = [];
-          var re = /(https:\/\/w\d+\.skydrop\.sbs\/download\.php\?id=[^"'\s<]+)/g;
-          var s;
-          while ((s = re.exec(html)) !== null) all.push(s[1]);
-          if (all.length >= ep) return all[ep - 1];
-          if (all.length) return all[0];
-          return null;
-        }
-        return m[1];
-      })
-      .then(function (skyUrl) {
-        if (!skyUrl) return null;
-        return resolveSkydrop(skyUrl);
+        return isFileUrl(link) ? { url: link, via: "Direct" } : null;
       })
       .catch(function () { return null; });
   }
@@ -457,6 +494,14 @@
     return base;
   }
 
+  // episode page preference: plain > 10bit > special (2008/hq/bluray)
+  function epPageRank(u) {
+    u = String(u || "").toLowerCase();
+    if (/10bit/.test(u)) return 1;
+    if (/2008|bluray|hq/.test(u)) return 2;
+    return 0;
+  }
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[KMMovies]";
     console.log(tag + " Fetching " + mediaType + " " + tmdbId +
@@ -479,29 +524,66 @@
     }).then(function (html) {
       if (!html) return [];
       if (typeof html !== "string") return html; // already streams array from early return
-      var parsed = parseDetail(html);
+      var parsed = parseDetail(html, ctx.detailUrl);
       var displayBase = ctx.title + (ctx.year ? " (" + ctx.year + ")" : "");
       if (mediaType === "tv") {
-        // episode-wise links are skydrop JS-gated -> use season packs (w3)
-        // filtered to the requested season; pack plays the whole season
         var wantS = parseInt(season || 1, 10);
-        var packs = parsed.w3.filter(function (w) {
-          return w.season === null || w.season === wantS;
+        var wantE = parseInt(episode || 1, 10);
+        var display = displayBase + " S" + pad2(wantS) + "E" + pad2(wantE);
+        // 1) per-episode: episodes.magiclinks.lol season+quality pages
+        var selRe = new RegExp("(?:^|[-/])s0?" + wantS + "(?:[-/]|$)", "i");
+        var epPages = parsed.episodes.filter(function (w) { return selRe.test(w.url); });
+        epPages.sort(function (a, b) {
+          var d = qRank(b.quality) - qRank(a.quality);
+          if (d) return d;
+          return epPageRank(a.url) - epPageRank(b.url);
         });
-        if (!packs.length) packs = parsed.w3.slice();
-        if (!packs.length) { console.log(tag + " No season packs"); return []; }
-        var order = { "1080p": 0, "720p": 1, "2160p": 2, "480p": 3, "HD": 4 };
-        packs.sort(function (a, b) {
-          return (order[a.quality] === undefined ? 5 : order[a.quality]) -
-            (order[b.quality] === undefined ? 5 : order[b.quality]);
+        var picked = [], seenQ = {};
+        epPages.forEach(function (w) {
+          var qk = w.quality || "HD";
+          if (seenQ[qk]) return;
+          seenQ[qk] = 1;
+          if (picked.length < 3) picked.push(w);
         });
-        var display = displayBase + " S" + pad2(wantS) + "E" + pad2(episode || 1) + " Pack";
-        return resolveW3List(packs, ctx.detailUrl, MAX_W3, false).then(function (found) {
-          var streams = qSort(found.map(function (f) {
-            return makeStream(display, f.quality, f.url, f.via, f.size, f.label);
-          })).slice(0, 10);
-          console.log(tag + " Found " + streams.length + " streams");
-          return streams;
+        var chain = Promise.resolve([]);
+        picked.forEach(function (pg) {
+          chain = chain.then(function (acc) {
+            if (acc.length >= 2) return acc;
+            return resolveEpisode(pg.url, wantE, ctx.detailUrl).then(function (got) {
+              console.log(tag + " ep " + pg.quality + " -> " + (got && got.url ? "ok" : "fail"));
+              if (got && got.url) {
+                acc.push(makeStream(display, pg.quality, got.url, got.via || "Skydrop", "", pg.label));
+              }
+              return acc;
+            });
+          });
+        });
+        return chain.then(function (streams) {
+          if (streams.length) {
+            var out0 = streams.slice().sort(function (a, b) {
+              return qRank(b.quality) - qRank(a.quality);
+            }).slice(0, 6);
+            console.log(tag + " Found " + out0.length + " streams (episode-wise)");
+            return out0;
+          }
+          // 2) last resort: season packs (combined w3 groups)
+          var packs = parsed.w3.filter(function (w) {
+            return w.season === null || w.season === wantS;
+          });
+          if (!packs.length) { console.log(tag + " No episode links / packs"); return []; }
+          var order = { "1080p": 0, "720p": 1, "2160p": 2, "480p": 3, "HD": 4 };
+          packs.sort(function (a, b) {
+            return (order[a.quality] === undefined ? 5 : order[a.quality]) -
+              (order[b.quality] === undefined ? 5 : order[b.quality]);
+          });
+          var packDisplay = display + " Pack";
+          return resolveW3List(packs, ctx.detailUrl, 4, true).then(function (found) {
+            var streams2 = qSort(found.map(function (f) {
+              return makeStream(packDisplay, f.quality, f.url, f.via, f.size, f.label);
+            })).slice(0, 10);
+            console.log(tag + " Found " + streams2.length + " streams (pack)");
+            return streams2;
+          });
         });
       }
       // movie: w3 links
