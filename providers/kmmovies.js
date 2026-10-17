@@ -422,10 +422,16 @@
       .catch(function () { return null; });
   }
 
-  function makeStream(title, quality, url, via, size) {
+  function codecFromLabel(s) {
+    s = String(s || "").toLowerCase();
+    return /x265|hevc|h265|h\.265/.test(s) ? "HEVC" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : "");
+  }
+
+  function makeStream(title, quality, url, via, size, label) {
+    var ctag = codecFromLabel(label);
     return {
-      name: "KMMovies - " + quality + " (" + via + ")",
-      title: title + (size ? " | " + size : ""),
+      name: "KMMovies - " + quality + (ctag ? " " + ctag : "") + " (" + via + ")",
+      title: title + (size ? " | " + size : "") + (ctag ? " | " + ctag : ""),
       url: url,
       quality: quality,
       isM3u8: false,
@@ -492,7 +498,7 @@
         var display = displayBase + " S" + pad2(wantS) + "E" + pad2(episode || 1) + " Pack";
         return resolveW3List(packs, ctx.detailUrl, MAX_W3, false).then(function (found) {
           var streams = qSort(found.map(function (f) {
-            return makeStream(display, f.quality, f.url, f.via, f.size);
+            return makeStream(display, f.quality, f.url, f.via, f.size, f.label);
           })).slice(0, 10);
           console.log(tag + " Found " + streams.length + " streams");
           return streams;
@@ -509,7 +515,7 @@
       return resolveW3List(parsed.w3, ctx.detailUrl, MAX_W3).then(function (found) {
         var display = displayBase;
         var streams = qSort(found.map(function (f) {
-          return makeStream(display, f.quality, f.url, f.via, f.size);
+          return makeStream(display, f.quality, f.url, f.via, f.size, f.label);
         })).slice(0, 10);
         console.log(tag + " Found " + streams.length + " streams");
         return streams;
