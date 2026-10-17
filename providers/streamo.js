@@ -53,7 +53,7 @@
   function parseRelease(s) {
     try { s = decodeURIComponent(s); } catch (e) {}
     s = " " + String(s || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
-    var codec = /x265|hevc|h265/.test(s) ? "HEVC x265" : (/x264|h264|avc/.test(s) ? "H.264" : "");
+    var codec = /x265|hevc|h265|h\.265/.test(s) ? "HEVC x265" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : "");
     var depth = /10bit|10 bit|hi10/.test(s) ? "10bit" : "";
     var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : "")));
     var audio = /truehd/.test(s) ? "TrueHD" : (/atmos/.test(s) ? "Atmos" : (/dts/.test(s) ? "DTS" : ""));
@@ -134,7 +134,15 @@
         return p && p.url && String(p.kind || "").toLowerCase() !== "torbox";
       }).slice(0, MAX_PROV);
       if (!provs.length) { console.log(tag + " No providers"); return []; }
-      var subLangs = subs.map(function (x) { return x.lang; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(",");
+      var subst = [], subSeen = {};
+      subs.forEach(function (x) {
+        var l = String(x.lang || "").replace(/\s*\d+$/, "").trim();
+        var k = l.toLowerCase();
+        if (!l || subSeen[k]) return;
+        subSeen[k] = true;
+        subst.push(l);
+      });
+      var subLangs = subst.slice(0, 8).join(", ") + (subst.length > 8 ? " +" + (subst.length - 8) : "");
       var display = (info && info.title ? info.title : "Video") + (info && info.year ? " (" + info.year + ")" : "");
       if (type === "tv") {
         var s = season || 1, e = episode || 1;
@@ -157,7 +165,7 @@
             var hm = playUrl.match(/#fn=([^&]+)/);
             if (hm) fn = hm[1];
             var r = parseRelease(fn);
-            var extra = [[r.codec, r.depth].join(" "), [r.hdr, r.audio].join(" ")].filter(Boolean).join(" | ");
+            var extra = [[r.codec, r.depth].filter(function (x) { return !!x; }).join(" "), [r.hdr, r.audio].filter(function (x) { return !!x; }).join(" ")].filter(function (x) { return !!x; }).join(" | ");
             acc.push({
               name: "Streamo - " + best + " (" + (p.name || "srv") + ")",
               title: display + "\n" + best + (extra ? " | " + extra : "") + " [HLS]" + (subLangs ? " | " + subLangs : ""),
