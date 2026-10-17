@@ -107,6 +107,17 @@
     }).catch(function () { return null; });
   }
 
+  function masterInfo(masterUrl) {
+    return fetchMaster(masterUrl).then(function (vs) {
+      if (!vs || !vs.length) return null;
+      var top = vs[0];
+      for (var i = 1; i < vs.length; i++) { if ((vs[i].h || 0) > (top.h || 0)) top = vs[i]; }
+      var q = qualityOf(top.h, top.w);
+      if (q === "0p") q = "Auto";
+      return { q: q, codec: codecOf(top.codecs) };
+    }).catch(function () { return null; });
+  }
+
   function qRank(q) {
     q = String(q || "").toLowerCase();
     if (q === "auto") return 2.5;
@@ -133,7 +144,15 @@
       return fetchSubs(mediaType, tmdbId, season, episode);
     }).then(function (ss) {
       subs = ss;
-      var subLangs = subs.map(function (x) { return x.lang; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(",");
+      var subst = [], subSeen = {};
+      subs.forEach(function (x) {
+        var l = String(x.lang || "").replace(/\s*\d+$/, "").trim();
+        var k = l.toLowerCase();
+        if (!l || subSeen[k]) return;
+        subSeen[k] = true;
+        subst.push(l);
+      });
+      var subLangs = subst.slice(0, 8).join(", ") + (subst.length > 8 ? " +" + (subst.length - 8) : "");
       var url = mediaType === "tv"
         ? CDN + "/content/tv/" + encodeURIComponent(tmdbId) + "/" + (season || 1) + "/" + (episode || 1)
         : CDN + "/content/movie/" + encodeURIComponent(tmdbId);
@@ -158,41 +177,39 @@
           var zurl = mediaType === "tv"
             ? "https://zcdn.bluevelvet.space/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=tv&season=" + (season || 1) + "&episode=" + (episode || 1)
             : "https://zcdn.bluevelvet.space/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=movie";
-          return fetchTimeout(zurl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: REF } }).then(function (rz) {
-            if (!rz.ok) throw new Error("zcdn " + rz.status);
-            return rz.json();
-          }).then(function (zj) {
+          return Promise.all([
+            masterInfo(d.url),
+            fetchTimeout(zurl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: REF } }).then(function (rz) {
+              if (!rz.ok) throw new Error("zcdn " + rz.status);
+              return rz.json();
+            }).catch(function (err) {
+              console.log(tag + " zcdn error: " + (err && err.message));
+              return null;
+            })
+          ]).then(function (rr) {
+            var dinfo = rr[0], zj = rr[1];
+            if (dinfo && dinfo.q && dinfo.q !== "Auto") {
+              streams[0].name = "Atlantic - " + dinfo.q + (dinfo.q === "2160p" ? " (4K)" : "") + (dinfo.codec ? " " + dinfo.codec : "");
+              streams[0].title = display + "\n" + dinfo.q + (dinfo.codec ? " " + dinfo.codec : "") + " [HLS]" + (subLangs ? " | " + subLangs : "");
+              streams[0].quality = dinfo.q;
+            }
             if (!zj || !zj.ready || !zj.url) {
               console.log(tag + " Found " + streams.length + " streams");
               return qSort(streams);
             }
-            return fetchTimeout(zj.url, { headers: headers() }).then(function (r) {
-              return r.text();
-            }).then(function (t) {
-              var maxH = 0, maxW = 0, m, re = /RESOLUTION=(\d+)x(\d+)/gi;
-              while ((m = re.exec(t)) !== null) {
-                var ww = parseInt(m[1], 10), hh = parseInt(m[2], 10);
-                if (hh > maxH) maxH = hh;
-                if (ww > maxW) maxW = ww;
+            return masterInfo(zj.url).then(function (zinfo) {
+              if (zinfo) {
+                streams.push({
+                  name: "Atlantic - " + zinfo.q + (zinfo.q === "2160p" ? " (4K)" : "") + (zinfo.codec ? " " + zinfo.codec : ""),
+                  title: display + "\n" + zinfo.q + (zinfo.codec ? " " + zinfo.codec : "") + " [HLS]" + (subLangs ? " | " + subLangs : ""),
+                  url: zj.url, quality: zinfo.q, isM3u8: true, type: "hls",
+                  headers: { Referer: REF, "User-Agent": UA },
+                  subtitles: subs, provider: "atlantic"
+                });
               }
-              var q = qualityOf(maxH, maxW);
-              streams.push({
-                name: "Atlantic - " + q + (q === "2160p" ? " (4K)" : ""),
-                title: display + "\n" + q + " [HLS]" + (subLangs ? " | " + subLangs : ""),
-                url: zj.url, quality: q, isM3u8: true, type: "hls",
-                headers: { Referer: REF, "User-Agent": UA },
-                subtitles: subs, provider: "atlantic"
-              });
-              console.log(tag + " Found " + streams.length + " streams");
-              return qSort(streams);
-            }).catch(function () {
               console.log(tag + " Found " + streams.length + " streams");
               return qSort(streams);
             });
-          }).catch(function (err) {
-            console.log(tag + " zcdn error: " + (err && err.message));
-            console.log(tag + " Found " + streams.length + " streams");
-            return qSort(streams);
           });
         });
       });
