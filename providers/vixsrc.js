@@ -106,6 +106,42 @@
     });
   }
 
+  function parseAudioTracks(master) {
+    var lines = String(master || "").split("\n");
+    var out = [], seen = {};
+    lines.forEach(function (ln) {
+      if (ln.indexOf("TYPE=AUDIO") < 0) return;
+      var name = (ln.match(/NAME="([^"]+)"/) || [])[1] || "";
+      if (!name) return;
+      var k = name.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(name);
+    });
+    return out;
+  }
+
+  function masterCodec(master) {
+    var lines = String(master || "").split("\n"), bestH = -1, bestLine = "", curLine = "", i;
+    for (i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
+        curLine = line;
+      } else if (line && line.charAt(0) !== "#" && curLine) {
+        var m = curLine.match(/RESOLUTION=\d+x(\d+)/);
+        var h = m ? parseInt(m[1], 10) : 0;
+        if (h >= bestH) { bestH = h; bestLine = curLine; }
+        curLine = "";
+      }
+    }
+    var cds = ((bestLine.match(/CODECS="([^"]+)"/i) || [])[1] || "").toLowerCase();
+    var dv = /dvh[1e]|dvhe|dav1/.test(cds) ? "DV" : "";
+    var v = dv ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : "")));
+    var rng = (bestLine.match(/VIDEO-RANGE=([A-Z0-9]+)/i) || [])[1] || "";
+    var hdr = !dv && /^(PQ|HLG)$/i.test(rng) ? "HDR" : "";
+    return [v, dv || hdr].filter(function (x) { return !!x; }).join(" ");
+  }
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[vixsrc]";
     var isTv = mediaType === "tv";
@@ -149,13 +185,17 @@
                 if (h > maxH) maxH = h;
               });
               var q = qualityFromHeight(maxH);
+              var vtag = masterCodec(master);
+              var audios = parseAudioTracks(master).slice(0, 4);
               return pAll(parseSubTracks(master).slice(0, MAX_SUBS).map(subVttUrl)).then(function (subsRes) {
                 var subs = subsRes.filter(function (x) { return x.ok && x.v; }).map(function (x) { return x.v; });
                 var langs = subs.map(function (x) { return x.lang; });
-                var extra = langs.length ? " | " + langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : "") : "";
+                var parts = [q + (vtag ? " " + vtag : "") + " [HLS]"];
+                if (audios.length) parts.push("ses: " + audios.join(", "));
+                if (langs.length) parts.push("altyazı: " + langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : ""));
                 var stream = {
-                  name: "VixSrc - " + q,
-                  title: display + "\n" + q + extra,
+                  name: "VixSrc - " + q + (vtag ? " " + vtag : ""),
+                  title: display + "\n" + parts.join(" | "),
                   url: playlistUrl,
                   quality: q,
                   isM3u8: true,
