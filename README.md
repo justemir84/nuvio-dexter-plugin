@@ -16,7 +16,7 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | Sağlayıcı | Tür | Biçim | Not |
 |---|---|---|---|
 | Dexter.pw | Film + Dizi | HLS | Bölüm bazında stream, Türkçe altyazı destekli |
-| KMMovies | Film + Dizi | Direkt (mkv/mp4) | Hintçe-İngilizce; dizilerde sezon paketi döner |
+| KMMovies | Film + Dizi | Direkt (mkv/mp4) | Hintçe-İngilizce; dizilerde bölüm bazlı 1080p/720p direkt dosya |
 | YTS | Film + Dizi | Torrent (magnet) | Doğrudan oynatır, debrid/token gerekmez |
 | VidCloud | Film + Dizi | HLS | İngilizce altyazı destekli |
 | Mapple | Film + Dizi | HLS | Çok sunuculu, ilk açılışta PoW çözümü birkaç saniye sürebilir |
