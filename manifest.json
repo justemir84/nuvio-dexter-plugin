@@ -130,7 +130,7 @@
     {
       "id": "vaplayer",
       "name": "VAplayer",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "filename": "providers/vaplayer.js",
       "supportedTypes": [
         "movie",
@@ -224,7 +224,7 @@
     {
       "id": "vidbolt",
       "name": "VidBolt",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "1080p HLS; HLS içinde 10 dilde ses + 5 altyazı",
       "filename": "providers/vidbolt.js",
       "supportedTypes": [
