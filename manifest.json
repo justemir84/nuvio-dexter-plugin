@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies, VixSrc ve VidRock sağlayıcıları",
   "scrapers": [
     {
@@ -18,7 +18,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
@@ -167,7 +167,7 @@
     {
       "id": "popwatch",
       "name": "PopWatch",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Kendi scraper ağı (7 kaynak); film + dizi, SRT altyazı",
       "filename": "providers/popwatch.js",
       "supportedTypes": [

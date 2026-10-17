@@ -89,7 +89,15 @@
     var path = mediaType === "tv" ? "/tv/" : "/movie/";
     return fetchTimeout("https://api.themoviedb.org/3" + path + tmdbId + "?api_key=" + TMDB_KEY + "&append_to_response=external_ids&language=en-US", {
       headers: { "User-Agent": UA, Accept: "application/json" }
-    }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
+    }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })
+      .then(function (d) {
+        if (!d) return null;
+        return {
+          title: d.title || d.name || d.original_title || d.original_name || "",
+          year: String(d.release_date || d.first_air_date || "").substring(0, 4),
+          imdbId: (d.external_ids && d.external_ids.imdb_id) || ""
+        };
+      });
   }
 
   function jpost(path, body) {
