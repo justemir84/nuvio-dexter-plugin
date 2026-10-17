@@ -27,7 +27,7 @@
 
   function parseRelease(s) {
     s = " " + String(s || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
-    var codec = /x265|hevc|h265/.test(s) ? "HEVC x265" : (/x264|h264|avc/.test(s) ? "H.264" : (/av1/.test(s) ? "AV1" : ""));
+    var codec = /x265|hevc|h265|h\.265/.test(s) ? "HEVC x265" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : (/av1/.test(s) ? "AV1" : ""));
     var depth = /10bit|10 bit|hi10/.test(s) ? "10bit" : "";
     var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : "")));
     var audio = /truehd/.test(s) ? "TrueHD" : (/atmos/.test(s) ? "Atmos" : (/dts/.test(s) ? "DTS" : ""));
@@ -159,7 +159,7 @@
         var serverLabel = source.label || "Server";
         var q0 = source.quality || "Auto";
         var rel = parseRelease(rawUrl + " " + serverLabel + " " + q0);
-        var extra = detailLine([[rel.codec, rel.depth].join(" "), [rel.hdr, rel.audio].join(" ")]);
+        var extra = detailLine([[rel.codec, rel.depth].filter(function (x) { return !!x; }).join(" "), [rel.hdr, rel.audio].filter(function (x) { return !!x; }).join(" ")]);
         var base = detailLine([serverLabel, extra, subLangs]);
 
         if (isDirectLink) {
