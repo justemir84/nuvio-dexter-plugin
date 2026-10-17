@@ -41,19 +41,40 @@
     return 0.5;
   }
 
-  function qualityFromMaster(text) {
-    var re = /RESOLUTION=(\d+)x(\d+)/g;
-    var m, w = 0;
-    while ((m = re.exec(text)) !== null) {
-      var v = Number(m[1]);
-      if (v > w) w = v;
+  function codecTag(cds, rng) {
+    cds = String(cds || "").toLowerCase();
+    var dv = /dvh[1e]|dvhe|dav1/.test(cds) ? "DV" : "";
+    var v = dv ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : "")));
+    var hdr = !dv && /^(PQ|HLG)$/i.test(String(rng || "")) ? "HDR" : "";
+    var a = /ec-3|eac3|ddp/.test(cds) ? "DDP" : (/ac-3/.test(cds) ? "DD" : (/mp4a|aac/.test(cds) ? "AAC" : ""));
+    var full = [v, dv || hdr, a].filter(function (x) { return !!x; }).join(" ");
+    return { v: v, tag: full };
+  }
+
+  function masterInfo(text) {
+    text = String(text || "");
+    var lines = text.split(/\r?\n/), bestW = -1, bestLine = "", curLine = "", i;
+    for (i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
+        curLine = line;
+      } else if (line && line.charAt(0) !== "#" && curLine) {
+        var m = curLine.match(/RESOLUTION=(\d+)x(\d+)/);
+        var w = m ? parseInt(m[1], 10) : 0;
+        if (w >= bestW) { bestW = w; bestLine = curLine; }
+        curLine = "";
+      }
     }
-    if (w >= 3200) return "4K";
-    if (w >= 1800) return "1080p";
-    if (w >= 1100) return "720p";
-    if (w >= 800) return "480p";
-    if (w >= 600) return "360p";
-    return "Auto";
+    var wmax = bestW > 0 ? bestW : 0;
+    if (bestW < 0) {
+      var re = /RESOLUTION=(\d+)x(\d+)/g, mm;
+      while ((mm = re.exec(text)) !== null) { var vv = Number(mm[1]); if (vv > wmax) wmax = vv; }
+    }
+    var q = wmax >= 3200 ? "4K" : (wmax >= 1800 ? "1080p" : (wmax >= 1100 ? "720p" : (wmax >= 800 ? "480p" : (wmax >= 600 ? "360p" : "Auto"))));
+    var cds = (bestLine.match(/CODECS="([^"]+)"/i) || [])[1] || "";
+    var rng = (bestLine.match(/VIDEO-RANGE=([A-Z0-9]+)/i) || [])[1] || "";
+    var ct = codecTag(cds, rng);
+    return { q: q, v: ct.v, tag: ct.tag };
   }
 
   function buildSubs(tracks) {
@@ -104,16 +125,18 @@
       return Promise.all(pick.map(function (src) {
         return fetchTimeout(src.url, { headers: { "User-Agent": UA, Referer: SITE, Origin: ORIGIN } })
           .then(function (m) { return m.ok ? m.text() : ""; }, function () { return ""; })
-          .then(function (txt) { return { src: src, quality: txt ? qualityFromMaster(txt) : "Auto" }; });
+          .then(function (txt) { var mi = txt ? masterInfo(txt) : null; return { src: src, quality: (mi && mi.q) || "Auto", vtag: mi ? mi.v : "", tags: mi ? mi.tag : "" }; });
       }));
     }).then(function (list) {
       var out = [];
       (list || []).forEach(function (item) {
         if (!item || !item.src) return;
         var extra = subs.length ? " | " + langLabel(subs) : "";
+        var vtag = item.vtag ? " " + item.vtag : "";
+        var ttag = item.tags ? " " + item.tags : "";
         out.push({
-          name: "MoviesAPI - " + item.quality,
-          title: display + "\n" + item.quality + " [HLS]" + extra,
+          name: "MoviesAPI - " + item.quality + vtag,
+          title: display + "\n" + item.quality + ttag + " [HLS]" + extra,
           url: item.src.url,
           quality: item.quality,
           isM3u8: true,
