@@ -1,6 +1,8 @@
 /**
  * vaplayer - VAplayer provider for Nuvio (streamdata.vaplayer.ru)
  * Akis: TMDB id -> api.php -> file_name (kalite/codec) + stream_urls[] HLS master aynalari + vdrk altyazilar
+ * stream_urls ayni dosyanin aynalaridir (dil farki yoktur); isim satirina codec,
+ * baslik satirina ayna sunucusu yazilir ki secenekler ayirt edilebilsin.
  * Hermes-safe: Promise chains only, no deps.
  */
 (function () {
@@ -67,6 +69,11 @@
     return base;
   }
 
+  function hostOf(u) {
+    var m = String(u || "").match(/^https?:\/\/([^\/]+)/i);
+    return m ? m[1] : "";
+  }
+
   function tmdbLookup(tmdbId, mediaType) {
     var type = mediaType === "tv" ? "tv" : "movie";
     var url = "https://api.themoviedb.org/3/" + type + "/" + encodeURIComponent(tmdbId) + "?api_key=" + TMDB_KEY + "&language=en-US";
@@ -125,8 +132,11 @@
       var aura = (rel.hdr + " " + rel.audio).trim();
       if (aura) extra.push(aura);
       extra = extra.join(" | ");
-      var langs = subs.map(function (x) { return x.lang; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
-      var subLangs = langs.slice(0, 6).join(",") + (langs.length > 6 ? " +" + (langs.length - 6) : "");
+      // Isim satiri: kalite + codec (varsa) -> "VAplayer - 1080p H.264"
+      var codecShort = rel.codec === "HEVC x265" ? "HEVC" : rel.codec;
+      var langs = subs.map(function (x) { return String(x.lang || "").replace(/\s*\d+$/, "").trim(); })
+        .filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+      var subLangs = langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : "");
       var display = (info && info.title ? info.title : (data.title || "Video")) + (info && info.year ? " (" + info.year + ")" : "");
       if (type === "tv") {
         var s = season || 1, e = episode || 1;
@@ -136,9 +146,10 @@
       urls.slice(0, MAX_MIRRORS).forEach(function (u, i) {
         if (!u || typeof u !== "string") return;
         var mi = i === 0 ? "" : " (M" + (i + 1) + ")";
+        var host = hostOf(u);
         out.push({
-          name: "VAplayer - " + quality + mi,
-          title: display + "\n" + quality + (extra ? " | " + extra : "") + " [HLS]" + (subLangs ? " | " + subLangs : ""),
+          name: "VAplayer - " + quality + (codecShort ? " " + codecShort : "") + mi,
+          title: display + "\n" + quality + (extra ? " | " + extra : "") + " [HLS" + (host ? " · " + host : "") + "]" + (subLangs ? " | " + subLangs : ""),
           url: u,
           quality: quality,
           isM3u8: true,
