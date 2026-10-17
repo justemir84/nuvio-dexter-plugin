@@ -113,6 +113,40 @@
     });
   }
 
+  function codecTags(cds, rng) {
+    cds = String(cds || "").toLowerCase();
+    var dv = /dvh[1e]|dvhe|dav1/.test(cds) ? "DV" : "";
+    var v = dv ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : "")));
+    var hdr = !dv && /^(PQ|HLG)$/i.test(String(rng || "")) ? "HDR" : "";
+    var a = /ec-3|eac3|ddp/.test(cds) ? "DDP" : (/ac-3/.test(cds) ? "DD" : (/mp4a|aac/.test(cds) ? "AAC" : ""));
+    return { v: v, extra: [dv || hdr, a].filter(function (x) { return !!x; }).join(" ") };
+  }
+
+  function masterTags(u) {
+    return fetchTimeout(u, { headers: { "User-Agent": UA, Referer: SITE } }).then(function (r) {
+      return r.ok ? r.text() : "";
+    }, function () { return ""; }).then(function (t) {
+      if (!t || t.indexOf("#EXTM3U") !== 0 || t.indexOf("#EXT-X-STREAM-INF") === -1) return null;
+      var lines = t.split(/\r?\n/), bestH = -1, bestLine = "", curLine = "", i;
+      for (i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
+          curLine = line;
+        } else if (line && line.charAt(0) !== "#" && curLine) {
+          var m = curLine.match(/RESOLUTION=\d+x(\d+)/);
+          var h = m ? parseInt(m[1], 10) : 0;
+          if (h >= bestH) { bestH = h; bestLine = curLine; }
+          curLine = "";
+        }
+      }
+      if (!bestLine) return null;
+      var cds = (bestLine.match(/CODECS="([^"]+)"/i) || [])[1] || "";
+      var rng = (bestLine.match(/VIDEO-RANGE=([A-Z0-9]+)/i) || [])[1] || "";
+      var ct = codecTags(cds, rng);
+      return (ct.v || ct.extra) ? ct : null;
+    });
+  }
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[thugtv]";
     var isTv = mediaType === "tv";
@@ -194,26 +228,37 @@
           // Hepsi mi olu? Yine de listeyi bos birakma.
           if (!kept.length) kept = all;
 
-          var out = kept.map(function (f) {
-            var bits = [f.q];
-            if (f.audio > 1) bits.push("Multi-Audio");
-            if (f.subs.length) bits.push(f.subs.length + " subs");
-            return {
-              name: "ThugTV - " + f.name + " " + f.q,
-              title: display + "\n" + bits.join(" - "),
-              url: f.url,
-              quality: f.q,
-              isM3u8: !!f.isHls,
-              type: f.isHls ? "hls" : "mp4",
-              headers: { Referer: SITE, "User-Agent": UA },
-              subtitles: f.subs,
-              provider: "thugtv"
-            };
+          var hlsKept = kept.filter(function (f) { return f.isHls; }).slice(0, 6);
+          return pAll(hlsKept.map(function (f) { return masterTags(f.url); })).then(function (mtags) {
+            var tmap = {};
+            hlsKept.forEach(function (f, i) {
+              var r = mtags[i];
+              if (r && r.ok && r.v) tmap[f.url] = r.v;
+            });
+            var out = kept.map(function (f) {
+              var mt = tmap[f.url];
+              var bits = [f.q];
+              if (mt && mt.v) bits.push(mt.v);
+              if (mt && mt.extra) bits.push(mt.extra);
+              if (f.audio > 1) bits.push("Multi-Audio");
+              if (f.subs.length) bits.push(f.subs.length + " subs");
+              return {
+                name: "ThugTV - " + f.name + " " + f.q + (mt && mt.v ? " " + mt.v : ""),
+                title: display + "\n" + bits.join(" - "),
+                url: f.url,
+                quality: f.q,
+                isM3u8: !!f.isHls,
+                type: f.isHls ? "hls" : "mp4",
+                headers: { Referer: SITE, "User-Agent": UA },
+                subtitles: f.subs,
+                provider: "thugtv"
+              };
+            });
+            out.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+            out = out.slice(0, MAX_STREAMS);
+            console.log(tag + " Found " + out.length + " streams");
+            return out;
           });
-          out.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
-          out = out.slice(0, MAX_STREAMS);
-          console.log(tag + " Found " + out.length + " streams");
-          return out;
         });
       });
     }).catch(function (err) {
