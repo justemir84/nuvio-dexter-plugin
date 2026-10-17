@@ -262,21 +262,31 @@
       return r.text();
     }).then(function (text) {
       if (text.indexOf("#EXT-X-STREAM-INF") === -1) return null;
-      var lines = text.split("\n"), out = [], cur = "Unknown", i;
+      var lines = text.split("\n"), out = [], cur = null, i;
       for (i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
         if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
           var rm = line.match(/RESOLUTION=\d+x(\d+)/);
-          cur = rm ? rm[1] + "p" : "Unknown";
-        } else if (line && line.charAt(0) !== "#") {
+          var q = rm ? rm[1] + "p" : "Unknown";
+          var cm = line.match(/CODECS="([^"]+)"/i);
+          var cds = cm ? cm[1].toLowerCase() : "";
+          var vc = /dvh[1e]|dvhe|dav1/.test(cds) ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : "")));
+          var dv = /dvh[1e]|dvhe|dav1/.test(cds) ? "DV" : "";
+          var rnm = line.match(/VIDEO-RANGE=([A-Z0-9]+)/i);
+          var hdr = !dv && rnm && /^(PQ|HLG)$/i.test(rnm[1]) ? "HDR" : "";
+          var ac = /ec-3|eac3|ddp/.test(cds) ? "DDP" : (/ac-3/.test(cds) ? "DD" : (/mp4a|aac/.test(cds) ? "AAC" : (/opus/.test(cds) ? "Opus" : "")));
+          var shortTag = [vc, dv || hdr].filter(function (x) { return !!x; }).join(" ");
+          var fullTag = [vc, dv || hdr, ac].filter(function (x) { return !!x; }).join(" ");
+          cur = { q: q, short: shortTag, full: fullTag };
+        } else if (line && line.charAt(0) !== "#" && cur) {
           var u = line.indexOf("http") === 0 ? line : masterUrl.split("/").slice(0, -1).join("/") + "/" + line;
           out.push({
-            name: "Mapple [" + hosterName + "] - " + cur,
-            title: display + "\n" + cur + " [HLS]",
-            url: u, quality: cur, isM3u8: true, type: "hls",
+            name: "Mapple [" + hosterName + "] - " + cur.q + (cur.short ? " " + cur.short : ""),
+            title: display + "\n" + cur.q + (cur.full ? " " + cur.full : "") + " [HLS]",
+            url: u, quality: cur.q, isM3u8: true, type: "hls",
             headers: pHeaders(), subtitles: subs, provider: "mapple"
           });
-          cur = "Unknown";
+          cur = null;
         }
       }
       return out;
