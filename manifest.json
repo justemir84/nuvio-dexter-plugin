@@ -1,12 +1,12 @@
 {
   "name": "Justelemir",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies, VixSrc ve VidRock sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
       "name": "Dexter.pw",
-      "version": "1.0.10",
+      "version": "1.0.11",
       "filename": "providers/dexterpw.js",
       "supportedTypes": [
         "movie",
@@ -18,7 +18,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
@@ -38,7 +38,7 @@
     {
       "id": "yts",
       "name": "YTS",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "YTS torrent provider (magnet, debrid gerektirir)",
       "filename": "providers/yts.js",
       "supportedTypes": [
@@ -75,7 +75,7 @@
     {
       "id": "mapple",
       "name": "Mapple",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "filename": "providers/mapple.js",
       "supportedTypes": [
         "movie",
@@ -94,7 +94,7 @@
     {
       "id": "atlantic",
       "name": "Atlantic",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "filename": "providers/atlantic.js",
       "supportedTypes": [
         "movie",
@@ -112,7 +112,7 @@
     {
       "id": "streamo",
       "name": "Streamo",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "filename": "providers/streamo.js",
       "supportedTypes": [
         "movie",
@@ -130,7 +130,7 @@
     {
       "id": "vaplayer",
       "name": "VAplayer",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "filename": "providers/vaplayer.js",
       "supportedTypes": [
         "movie",
@@ -148,7 +148,7 @@
     {
       "id": "moviesapi",
       "name": "MoviesAPI",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "VidSpark backend; film + dizi, çok dilli VTT altyazı",
       "filename": "providers/moviesapi.js",
       "supportedTypes": [
@@ -243,7 +243,7 @@
     {
       "id": "thugtv",
       "name": "ThugTV",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Castle/Bishop/Knight sunucuları; HLS + MP4, çok dilli altyazı",
       "filename": "providers/thugtv.js",
       "supportedTypes": [
@@ -282,7 +282,7 @@
     {
       "id": "vixsrc",
       "name": "VixSrc",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "İtalyanca/İngilizce çift sesli HLS; 6+ dilde VTT altyazı",
       "filename": "providers/vixsrc.js",
       "supportedTypes": [
@@ -302,7 +302,7 @@
     {
       "id": "vidrock",
       "name": "VidRock",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "9 sunucu (Luna/Orion/…); 1080p'ye kadar HLS",
       "filename": "providers/vidrock.js",
       "supportedTypes": [
