@@ -404,10 +404,21 @@ function getStreams(tmdbId, type, season, episode) {
         if (sourceResult && sourceResult.url) {
           console.log(`[4KHDHub] Extracting from HubCloud: ${sourceResult.url}`);
           const extractedLinks = yield extractHubCloud(sourceResult.url, sourceResult.meta);
+          // Extra info from title (codec, audio, hdr, etc.)
+          const titleInfo = sourceResult.meta.title || "";
+          const codecMatch = titleInfo.match(/(HEVC|x265|x264|AV1|VP9)/i);
+          const audioMatch = titleInfo.match(/(Dual Audio|Hindi|English|Tamil|Telugu|Multi Audio|AAC|DDP|DTS|Atmos)/gi);
+          const hdrMatch = titleInfo.match(/(HDR|DV|Dolby Vision|SDR|10Bit)/gi);
+          const extraInfo = [
+            codecMatch ? codecMatch[0] : null,
+            audioMatch ? audioMatch.join(", ") : null,
+            hdrMatch ? hdrMatch.join(", ") : null
+          ].filter(Boolean).join(" | ");
+
           return extractedLinks.map((link) => ({
-            name: `4KHDHub - ${link.source}${sourceResult.meta.height ? ` ${sourceResult.meta.height}p` : ""}`,
+            name: `4KHDHub - ${link.source}${sourceResult.meta.height ? ` ${sourceResult.meta.height}p` : ""}${extraInfo ? ` - ${extraInfo}` : ""}`,
             title: `${link.meta.title}
-${formatBytes(link.meta.bytes || 0)}`,
+${formatBytes(link.meta.bytes || 0)}${extraInfo ? ` | ${extraInfo}` : ""}`,
             url: link.url,
             quality: sourceResult.meta.height ? `${sourceResult.meta.height}p` : void 0,
             behaviorHints: {
