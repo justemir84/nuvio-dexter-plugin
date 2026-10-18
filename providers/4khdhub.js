@@ -417,8 +417,7 @@ function getStreams(tmdbId, type, season, episode) {
 
           return extractedLinks.map((link) => ({
             name: `4KHDHub - ${link.source}${sourceResult.meta.height ? ` ${sourceResult.meta.height}p` : ""}`,
-            title: `${link.meta.title}
-${formatBytes(link.meta.bytes || 0)}${extraInfo ? ` | ${extraInfo}` : ""}`,
+            title: `${sourceResult.meta.height ? sourceResult.meta.height + "p" : ""} | ${formatBytes(link.meta.bytes || 0)}${extraInfo ? ` | ${extraInfo}` : ""}`,
             url: link.url,
             quality: sourceResult.meta.height ? `${sourceResult.meta.height}p` : void 0,
             behaviorHints: {
