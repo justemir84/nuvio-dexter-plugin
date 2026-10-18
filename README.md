@@ -32,6 +32,7 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | 123Movies | Film + Dizi | MP4 | aoneroom altyapısı; 1080p'ye kadar, SRT altyazı |
 | VixSrc | Film + Dizi | HLS | İtalyanca/İngilizce çift sesli; 6+ dilde VTT altyazı |
 | VidRock | Film + Dizi | HLS | Luna/Orion dahil 9 sunucu; 1080p'ye kadar HLS |
+| 4KHDHub | Film + Dizi | HLS + MP4 | 4K/UHD film ve dizi stream'leri |
 
 ## Liste düzeni
 
