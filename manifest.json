@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.2.7",
+  "version": "2.2.8",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies, VixSrc ve VidRock, 4KHDHub sağlayıcıları",
   "scrapers": [
     {
@@ -320,7 +320,7 @@
     {
       "id": "4khdhub",
       "name": "4KHDHub",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "description": "4K/UHD film ve dizi stream'leri",
       "filename": "providers/4khdhub.js",
       "supportedTypes": [

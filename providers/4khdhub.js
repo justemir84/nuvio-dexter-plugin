@@ -415,15 +415,28 @@ function getStreams(tmdbId, type, season, episode) {
             hdrMatch ? hdrMatch.join(", ") : null
           ].filter(Boolean).join(" | ");
 
-          return extractedLinks.map((link) => ({
-            name: `4KHDHub - ${link.source}${sourceResult.meta.height ? ` ${sourceResult.meta.height}p` : ""}`,
-            title: `${sourceResult.meta.height ? sourceResult.meta.height + "p" : ""} | ${formatBytes(link.meta.bytes || 0)}${extraInfo ? ` | ${extraInfo}` : ""}`,
-            url: link.url,
-            quality: sourceResult.meta.height ? `${sourceResult.meta.height}p` : void 0,
-            behaviorHints: {
-              bingeGroup: `4khdhub-${link.source}`
-            }
-          }));
+          return extractedLinks.map((link) => {
+            const detailLine = [
+              sourceResult.meta.height ? `${sourceResult.meta.height}p` : "",
+              formatBytes(link.meta.bytes || 0),
+              extraInfo
+            ].filter(Boolean).join(" | ");
+
+            const titleText =
+              `${link.meta.title || sourceResult.meta.title || ""}\n${detailLine}`;
+
+            return {
+              name: `4KHDHub - ${link.source}${sourceResult.meta.height ? ` ${sourceResult.meta.height}p` : ""}`,
+              title: titleText,
+              size: titleText,
+              description: titleText,
+              url: link.url,
+              quality: sourceResult.meta.height ? `${sourceResult.meta.height}p` : void 0,
+              behaviorHints: {
+                bingeGroup: `4khdhub-${link.source}`
+              }
+            };
+          });
         }
         return [];
       } catch (err) {
