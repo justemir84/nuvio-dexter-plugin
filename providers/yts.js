@@ -1,5 +1,5 @@
 /**
- * yts - YTS torrent provider for Nuvio (yts-official.com)
+ * yts - YTS torrent provider for Nuvio (yts.mx)
  * Flow: TMDB -> title/year -> ?api=torrents -> magnet list
  *
  * Returns magnet URIs (same contract as the Torrentio provider).
@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  var BASE = "https://en.yts-official.com";
+  var BASE = "https://yts.mx";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TIMEOUT = 12000;
