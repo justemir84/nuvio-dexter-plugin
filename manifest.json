@@ -337,6 +337,27 @@
         "en",
         "hi"
       ]
+    },
+    {
+      "id": "moviesdrive",
+      "name": "MoviesDrive",
+      "version": "1.0.0",
+      "description": "MoviesDrive arşivi; HubCloud üzerinden R2 doğrudan MKV, film + dizi",
+      "filename": "providers/moviesdrive.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "hi",
+        "en"
+      ]
     }
   ]
 }
