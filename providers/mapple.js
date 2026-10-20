@@ -1,27 +1,54 @@
 /**
  * mapple - Mapple provider for Nuvio
- * Flow: TMDB -> request-token -> playback-init (+PoW) -> per-hoster encrypt -> HLS master -> variants + wyzie subs
+ * Flow: TMDB -> request-token -> media-session (+PoW) -> per-hoster encrypt -> HLS master -> variants
+ * Subs: Stremio OpenSubtitles v3 (via IMDb id)
  * Hermes-safe: Promise chains only, no deps (embedded SHA256).
  */
 (function () {
   "use strict";
 
   var BASE = "https://mapple.fun";
-  var SUBS = "https://sub.wyzie.io";
+  var STREMIO = "https://opensubtitles-v3.strem.io";
   var TMDB_BASE = "https://api.themoviedb.org/3";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
-  var DUA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-  var PUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  // Site/API (mapple.fun) rejects Android UA with Cloudflare 403 -> desktop UA.
+  var WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  // Playlist proxy rejects desktop/Node TLS with 403 -> Android/ExoPlayer style UA.
+  var PLAY_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
   var TIMEOUT = 15000;
 
   var HOSTERS = [
-    { name: "Zeus", key: "mapple" }, { name: "Poseidon", key: "s25" }, { name: "Athena", key: "s2" },
-    { name: "Hera", key: "s4" }, { name: "Persephone", key: "s12" }, { name: "Apollo", key: "s19" },
-    { name: "Artemis", key: "s13" }, { name: "Hermes", key: "s26" }, { name: "Ares", key: "s24" },
-    { name: "Aphrodite", key: "s6" }, { name: "Hephaestus", key: "s15" }, { name: "Demeter", key: "s7" },
-    { name: "Dionysus", key: "s8" }, { name: "Hestia", key: "s3" }, { name: "Hades", key: "s16" },
-    { name: "Nike", key: "s5" }, { name: "Atlas", key: "s1" }, { name: "Prometheus", key: "s10" }
+    { name: "Poseidon", key: "s25" },
+    { name: "Prometheus", key: "s10" },
+    { name: "Zeus", key: "mapple" },
+    { name: "Athena", key: "s2" },
+    { name: "Astraeus", key: "s28" },
+    { name: "Apollo", key: "s19" },
+    { name: "Hera", key: "s4" },
+    { name: "Persephone", key: "s12" },
+    { name: "Aphrodite", key: "s6" },
+    { name: "Demeter", key: "s7" },
+    { name: "Dionysus", key: "s8" }
   ];
+
+  var LANGS = {
+    eng: "English", tur: "Turkish", spa: "Spanish", por: "Portuguese", pob: "Portuguese (BR)",
+    fre: "French", fra: "French", ger: "German", deu: "German", ita: "Italian", rus: "Russian",
+    ara: "Arabic", hin: "Hindi", jpn: "Japanese", kor: "Korean", chi: "Chinese", zho: "Chinese",
+    pol: "Polish", dut: "Dutch", nld: "Dutch", swe: "Swedish", dan: "Danish", nor: "Norwegian",
+    fin: "Finnish", cze: "Czech", ces: "Czech", hun: "Hungarian", gre: "Greek", ell: "Greek",
+    heb: "Hebrew", rum: "Romanian", ron: "Romanian", ukr: "Ukrainian", vie: "Vietnamese",
+    tha: "Thai", ind: "Indonesian", may: "Malay", msa: "Malay", srp: "Serbian", hrv: "Croatian",
+    bul: "Bulgarian", slo: "Slovak", slk: "Slovak", slv: "Slovenian", est: "Estonian",
+    lav: "Latvian", lit: "Lithuanian", ice: "Icelandic", isl: "Icelandic", per: "Persian",
+    fas: "Persian", ben: "Bengali", tam: "Tamil", tel: "Telugu", mal: "Malayalam",
+    kan: "Kannada", mar: "Marathi", guj: "Gujarati", pun: "Punjabi", urd: "Urdu",
+    alb: "Albanian", sqi: "Albanian", mac: "Macedonian", mkd: "Macedonian", bos: "Bosnian",
+    cat: "Catalan", baq: "Basque", eus: "Basque", glg: "Galician", fil: "Filipino",
+    tgl: "Tagalog", swa: "Swahili", afr: "Afrikaans", bel: "Belarusian", geo: "Georgian",
+    kat: "Georgian", arm: "Armenian", hye: "Armenian", aze: "Azerbaijani", kaz: "Kazakh",
+    uz_uz: "Uzbek", mni: "Manipuri", asm: "Assamese", ori: "Odia", pan: "Punjabi"
+  };
 
   /* ---------- sha256 (pure js) ---------- */
 
@@ -97,7 +124,7 @@
   }
 
   function solvePow(challenge, difficulty) {
-    var nonce = 0, max = 20000000;
+    var nonce = 0, max = 50000000;
     while (nonce < max) {
       var h = sha256Bytes(utf8Bytes(challenge + nonce));
       if (lzBits(h) >= difficulty) return String(nonce);
@@ -123,29 +150,59 @@
     });
   }
 
-  function apiH(ref, json, cookie) {
-    var h = { "User-Agent": DUA, Accept: "*/*", Origin: BASE, Referer: ref || BASE + "/" };
+  function apiH(json, cookie) {
+    var h = {
+      "User-Agent": WEB_UA,
+      Accept: json ? "application/json, text/plain, */*" : "*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      Origin: BASE,
+      Referer: BASE + "/"
+    };
     if (json) h["Content-Type"] = "application/json";
     if (cookie) h.Cookie = cookie;
     return h;
   }
 
+  function splitSetCookies(raw) {
+    if (!raw) return [];
+    var out = [];
+    String(raw).split(/\r?\n/).forEach(function (line) {
+      line.split(/,(?=\s*[^;,=\s]+=)/).forEach(function (c) {
+        if (String(c).trim()) out.push(c);
+      });
+    });
+    return out;
+  }
+
   function jar() {
     var m = {};
+    // Server sets the same signed session under both names; mirror in case one is hidden.
+    function mirror() {
+      var a = m["_mapple_site"];
+      var b = m["_mapple_site_partitioned"];
+      if (a && !b) m["_mapple_site_partitioned"] = a;
+      else if (b && !a) m["_mapple_site"] = b;
+    }
     return {
       update: function (res) {
         var raw = [];
         try {
-          if (res && res.headers && typeof res.headers.getSetCookie === "function") raw = res.headers.getSetCookie() || [];
-          else if (res && res.headers) {
-            var h = res.headers.get("set-cookie");
-            if (h) raw = [h];
+          if (res && res.headers) {
+            if (typeof res.headers.getSetCookie === "function") raw = res.headers.getSetCookie() || [];
+            if (!raw.length) {
+              var h = res.headers.get("set-cookie");
+              if (h) raw = splitSetCookies(h);
+            }
           }
         } catch (e) {}
         raw.forEach(function (c) {
-          var kv = c.split(";")[0].split("=");
-          if (kv.length >= 2) m[kv[0].trim()] = kv.slice(1).join("=").trim();
+          var i = String(c).indexOf("=");
+          if (i <= 0) return;
+          var name = String(c).slice(0, i).trim();
+          var val = String(c).slice(i + 1).split(";")[0].trim();
+          if (name) m[name] = val;
         });
+        mirror();
       },
       str: function () {
         var p = [];
@@ -157,16 +214,53 @@
 
   /* ---------- session ---------- */
 
-  function getSession(tmdbId, mediaType, tvSlug, mediaReferer) {
+  function finishSession(ms, payload, j) {
+    if (ms && ms.token) {
+      return { requestToken: payload.requestToken, token: ms.token, jar: j, cookie: j.str() };
+    }
+    if (ms && ms.requiresPow && ms.pow) {
+      var powStart = Date.now();
+      var nonce = solvePow(ms.pow.challenge, Number(ms.pow.difficulty) || 18);
+      if (nonce === null) throw new Error("pow unsolved");
+      console.log("[Mapple] PoW " + (Date.now() - powStart) + "ms, nonce " + nonce);
+      var body = {
+        mediaId: payload.mediaId,
+        mediaType: payload.mediaType,
+        tv_slug: payload.tv_slug,
+        requestToken: payload.requestToken,
+        pow: { challengeId: ms.pow.challengeId, nonce: nonce }
+      };
+      return fetchTimeout(BASE + "/api/media-session", {
+        method: "POST",
+        headers: apiH(true, j.str()),
+        body: JSON.stringify(body)
+      }).then(function (r) {
+        j.update(r);
+        if (!r.ok) throw new Error("media-session " + r.status);
+        return r.json();
+      }).then(function (ms2) {
+        if (!ms2 || !ms2.token) throw new Error("pow rejected");
+        return { requestToken: payload.requestToken, token: ms2.token, jar: j, cookie: j.str() };
+      });
+    }
+    throw new Error("media-session denied");
+  }
+
+  function getSession(tmdbId, mediaType, tvSlug) {
     var j = jar();
-    return fetchTimeout(BASE + "/", { headers: { "User-Agent": DUA, Accept: "text/html" } }).then(function (r) {
+    var payload = { mediaId: Number(tmdbId), mediaType: mediaType, tv_slug: tvSlug };
+    return fetchTimeout(BASE + "/", {
+      headers: {
+        "User-Agent": WEB_UA,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    }).then(function (r) {
       j.update(r);
-      return r.text().then(function () {
-        return fetchTimeout(BASE + "/api/request-token", {
-          method: "POST",
-          headers: apiH(mediaReferer, true, j.str()),
-          body: ""
-        });
+      return fetchTimeout(BASE + "/api/request-token", {
+        method: "POST",
+        headers: apiH(true, j.str()),
+        body: ""
       });
     }).then(function (r) {
       j.update(r);
@@ -175,34 +269,18 @@
     }).then(function (td) {
       var requestToken = td && td.token;
       if (!requestToken) throw new Error("no requestToken");
-      var payload = { mediaId: Number(tmdbId), mediaType: mediaType, tv_slug: tvSlug, requestToken: requestToken };
-      return fetchTimeout(BASE + "/api/playback-init", {
+      payload.requestToken = requestToken;
+      return fetchTimeout(BASE + "/api/media-session", {
         method: "POST",
-        headers: apiH(mediaReferer, true, j.str()),
+        headers: apiH(true, j.str()),
         body: JSON.stringify(payload)
-      }).then(function (r) {
-        j.update(r);
-        return r.json().then(function (pd) { return { pd: pd, payload: payload, jar: j, ref: mediaReferer }; });
       });
-    }).then(function (o) {
-      if (o.pd && o.pd.success && o.pd.token) return { requestToken: o.payload.requestToken, playbackToken: o.pd.token, jar: o.jar, ref: o.ref };
-      if (o.pd && o.pd.requiresPow && o.pd.pow) {
-        var nonce = solvePow(o.pd.pow.challenge, o.pd.pow.difficulty || 18);
-        if (nonce === null) throw new Error("pow unsolved");
-        var body2 = { mediaId: o.payload.mediaId, mediaType: o.payload.mediaType, tv_slug: o.payload.tv_slug, requestToken: o.payload.requestToken, pow: { challengeId: o.pd.pow.challengeId, nonce: nonce } };
-        return fetchTimeout(BASE + "/api/playback-init", {
-          method: "POST",
-          headers: apiH(o.ref, true, o.jar.str()),
-          body: JSON.stringify(body2)
-        }).then(function (r2) {
-          o.jar.update(r2);
-          return r2.json();
-        }).then(function (pd2) {
-          if (!pd2 || !pd2.token) throw new Error("pow rejected");
-          return { requestToken: o.payload.requestToken, playbackToken: pd2.token, jar: o.jar, ref: o.ref };
-        });
-      }
-      throw new Error("playback-init denied");
+    }).then(function (r) {
+      j.update(r);
+      if (!r.ok) throw new Error("media-session " + r.status);
+      return r.json();
+    }).then(function (ms) {
+      return finishSession(ms, payload, j);
     }).catch(function (err) {
       console.log("[Mapple] session failed: " + (err && err.message));
       return null;
@@ -214,7 +292,7 @@
   function tmdbLookup(tmdbId, mediaType) {
     var type = mediaType === "tv" ? "tv" : "movie";
     var url = TMDB_BASE + "/" + type + "/" + encodeURIComponent(tmdbId) + "?api_key=" + TMDB_KEY + "&append_to_response=external_ids";
-    return fetchTimeout(url, { headers: { "User-Agent": DUA, Accept: "application/json" } }).then(function (r) {
+    return fetchTimeout(url, { headers: { "User-Agent": WEB_UA, Accept: "application/json" } }).then(function (r) {
       if (!r.ok) throw new Error("TMDB " + r.status);
       return r.json();
     }).then(function (d) {
@@ -227,33 +305,59 @@
     });
   }
 
-  function wyzie(tmdbId, mediaType, season, episode) {
-    var url = mediaType === "tv"
-      ? SUBS + "/search?id=" + encodeURIComponent(tmdbId) + "&season=" + (season || 1) + "&episode=" + (episode || 1)
-      : SUBS + "/search?id=" + encodeURIComponent(tmdbId);
-    return fetchTimeout(url, { headers: { Accept: "application/json", "User-Agent": DUA } }).then(function (r) {
-      if (!r.ok) throw new Error("wyzie " + r.status);
+  function stremioSubs(imdbId, mediaType, season, episode) {
+    if (!imdbId) return Promise.resolve([]);
+    var type = mediaType === "tv" ? "series" : "movie";
+    var id = imdbId;
+    if (type === "series") id += ":" + (season || 1) + ":" + (episode || 1);
+    var url = STREMIO + "/subtitles/" + type + "/" + id + ".json";
+    return fetchTimeout(url, { headers: { Accept: "application/json", "User-Agent": WEB_UA } }).then(function (r) {
+      if (!r.ok) throw new Error("stremio " + r.status);
       return r.json();
     }).then(function (d) {
-      var arr = Array.isArray(d) ? d : (d && (d.subtitles || d.results)) || [];
-      var out = [];
-      arr.forEach(function (s) {
-        if (s && (s.url || s.file)) {
-          var lang = s.language || s.lang || "Subtitle";
-          out.push({ url: s.url || s.file, lang: s.isCC || s.cc ? lang + " (CC)" : lang });
-        }
-      });
-      return out;
+      var arr = (d && d.subtitles) || [];
+      var out = [], seen = {}, perLang = {};
+      for (var i = 0; i < arr.length && out.length < 60; i++) {
+        var s = arr[i];
+        if (!s || !s.url || seen[s.url]) continue;
+        var code = String(s.lang || "").toLowerCase();
+        if ((perLang[code] || 0) >= 3) continue;
+        seen[s.url] = true;
+        perLang[code] = (perLang[code] || 0) + 1;
+        out.push({ url: s.url, lang: LANGS[code] || code.toUpperCase() || "Subtitle" });
+      }
+      function prio(x) {
+        if (x.lang === "English") return 0;
+        if (x.lang === "Turkish") return 1;
+        return 2;
+      }
+      out.sort(function (a, b) { return prio(a) - prio(b); });
+      return out.slice(0, 40);
     }).catch(function () { return []; });
   }
 
-  function parseQuality(v) {
-    var m = String(v || "").match(/(\d{3,4})/);
-    return m ? parseInt(m[1], 10) + "p" : "Auto";
+  /* ---------- streams ---------- */
+
+  function absUrl(u) {
+    u = String(u || "");
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.indexOf("//") === 0) return "https:" + u;
+    if (u.charAt(0) === "/") return BASE + u;
+    return BASE + "/" + u;
   }
 
-  function pHeaders(ref) {
-    return { Referer: ref || BASE + "/", Origin: BASE, "User-Agent": PUA };
+  function resolveUrl(base, rel) {
+    rel = String(rel || "");
+    if (/^https?:\/\//i.test(rel)) return rel;
+    var origin = (base.match(/^https?:\/\/[^\/]+/) || [""])[0];
+    if (rel.indexOf("//") === 0) return "https:" + rel;
+    if (rel.charAt(0) === "/") return origin + rel;
+    var clean = base.split("?")[0].split("#")[0];
+    return clean.slice(0, clean.lastIndexOf("/") + 1) + rel;
+  }
+
+  function pHeaders() {
+    return { Referer: BASE + "/", Origin: BASE, "User-Agent": PLAY_UA, Accept: "*/*" };
   }
 
   function parseMaster(masterUrl, hosterName, display, subs) {
@@ -261,7 +365,7 @@
       if (!r.ok) throw new Error("master " + r.status);
       return r.text();
     }).then(function (text) {
-      if (text.indexOf("#EXT-X-STREAM-INF") === -1) return null;
+      if (!text || text.indexOf("#EXT-X-STREAM-INF") === -1) return null;
       var lines = text.split("\n"), out = [], cur = null, i;
       for (i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
@@ -279,11 +383,10 @@
           var fullTag = [vc, dv || hdr, ac].filter(function (x) { return !!x; }).join(" ");
           cur = { q: q, short: shortTag, full: fullTag };
         } else if (line && line.charAt(0) !== "#" && cur) {
-          var u = line.indexOf("http") === 0 ? line : masterUrl.split("/").slice(0, -1).join("/") + "/" + line;
           out.push({
             name: "Mapple [" + hosterName + "] - " + cur.q + (cur.short ? " " + cur.short : ""),
             title: display + "\n" + cur.q + (cur.full ? " " + cur.full : "") + " [HLS]",
-            url: u, quality: cur.q, isM3u8: true, type: "hls",
+            url: resolveUrl(masterUrl, line), quality: cur.q, isM3u8: true, type: "hls",
             headers: pHeaders(), subtitles: subs, provider: "mapple"
           });
           cur = null;
@@ -294,32 +397,48 @@
   }
 
   function hosterStream(hoster, tmdbId, mediaType, tvSlug, session, display, subs) {
-    var body = JSON.stringify({ data: { mediaId: Number(tmdbId), mediaType: mediaType, tv_slug: tvSlug, source: hoster.key }, endpoint: "stream-encrypted", requestToken: session.requestToken });
+    var body = JSON.stringify({
+      data: { mediaId: Number(tmdbId), mediaType: mediaType, tv_slug: tvSlug, source: hoster.key },
+      endpoint: "stream-encrypted",
+      requestToken: session.requestToken
+    });
     return fetchTimeout(BASE + "/api/encrypt", {
       method: "POST",
-      headers: apiH(session.ref, true, session.jar.str()),
+      headers: apiH(true, session.cookie),
       body: body
     }).then(function (r) {
       if (!r.ok) throw new Error("encrypt " + r.status);
       return r.json();
     }).then(function (enc) {
       if (!enc || !enc.url) return [];
-      var ep = BASE + enc.url + "&requestToken=" + encodeURIComponent(session.requestToken) + "&token=" + encodeURIComponent(session.playbackToken);
-      return fetchTimeout(ep, { headers: apiH(session.ref, false, session.jar.str()) }).then(function (r2) {
-        if (!r2.ok) throw new Error("stream " + r2.status);
-        return r2.json();
-      }).then(function (sd) {
-        var su = sd && sd.data && sd.data.stream_url;
-        if (!su || !sd.success || String(su).indexOf("playback-unavailable") !== -1) return [];
-        return parseMaster(su, hoster.name, display, subs).then(function (parsed) {
-          if (parsed && parsed.length) return parsed;
-          return [{
-            name: "Mapple [" + hoster.name + "]",
-            title: display + "\nAuto [HLS]",
-            url: su, quality: "Auto", isM3u8: true, type: "hls",
-            headers: pHeaders(), subtitles: subs, provider: "mapple"
-          }];
-        });
+      var ep = absUrl(enc.url);
+      ep += (ep.indexOf("?") === -1 ? "?" : "&") + "requestToken=" + encodeURIComponent(session.requestToken) + "&token=" + encodeURIComponent(session.token);
+      return fetchTimeout(ep, { headers: apiH(false, session.cookie) });
+    }).then(function (r2) {
+      if (!r2.ok) throw new Error("stream " + r2.status);
+      return r2.json();
+    }).then(function (sd) {
+      if (!sd || sd.success === false || !sd.data || !sd.data.stream_url) return [];
+      var su = String(sd.data.stream_url);
+      if (su.indexOf("playback-unavailable") !== -1) return [];
+      var streamUrl = absUrl(su);
+      var fmt = String(sd.data.format || "hls").toLowerCase();
+      if (fmt !== "hls" && streamUrl.indexOf(".m3u8") === -1) {
+        return [{
+          name: "Mapple [" + hoster.name + "]",
+          title: display + "\n" + fmt.toUpperCase(),
+          url: streamUrl, quality: "Auto", isM3u8: false, type: fmt,
+          headers: pHeaders(), subtitles: subs, provider: "mapple"
+        }];
+      }
+      return parseMaster(streamUrl, hoster.name, display, subs).then(function (parsed) {
+        if (parsed && parsed.length) return parsed;
+        return [{
+          name: "Mapple [" + hoster.name + "]",
+          title: display + "\nAuto [HLS]",
+          url: streamUrl, quality: "Auto", isM3u8: true, type: "hls",
+          headers: pHeaders(), subtitles: subs, provider: "mapple"
+        }];
       });
     }).catch(function (err) {
       console.log("[Mapple] " + hoster.name + ": " + (err && err.message));
@@ -343,6 +462,7 @@
     base.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
     return base;
   }
+  function pad2(n) { return n < 10 ? "0" + n : String(n); }
 
   function getStreams(tmdbId, mediaType, seasonNum, episodeNum) {
     var tag = "[Mapple]";
@@ -350,22 +470,19 @@
     var s = seasonNum ? Number(seasonNum) : 1;
     var e = episodeNum ? Number(episodeNum) : 1;
     var tvSlug = type === "tv" ? s + "-" + e : "";
-    var ref = type === "tv" ? BASE + "/tv/" + tmdbId + "/" + s + "/" + e : BASE + "/movie/" + tmdbId;
     console.log(tag + " Querying TMDB: " + tmdbId + ", Type: " + mediaType);
     var info = null, subs = [];
     return tmdbLookup(tmdbId, type).then(function (d) {
       info = d;
       if (!info || !info.title) throw new Error("tmdb");
-      return wyzie(tmdbId, type, s, e);
+      return stremioSubs(info.imdbId, type, s, e);
     }).then(function (ss) {
       subs = ss;
-      return getSession(tmdbId, type, tvSlug, ref);
+      return getSession(tmdbId, type, tvSlug);
     }).then(function (session) {
       if (!session) return [];
       var display = info.title + (info.year ? " (" + info.year + ")" : "");
-      if (type === "tv") display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
-      var subLangs = subs.map(function (x) { return x.lang; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(",");
-      if (subLangs) display += "";
+      if (type === "tv") display += " S" + pad2(s) + "E" + pad2(e);
       var all = HOSTERS.map(function (h) {
         return hosterStream(h, tmdbId, type, tvSlug, session, display, subs);
       });
@@ -375,13 +492,14 @@
           (a || []).forEach(function (st) {
             if (st && st.url && !seen[st.url]) {
               seen[st.url] = true;
-              if (subLangs) st.title = st.title + " | " + subLangs;
               flat.push(st);
             }
           });
         });
-        console.log(tag + " Found " + flat.length + " streams");
-        return qSort(flat).slice(0, 20);
+        console.log(tag + " Found " + flat.length + " streams, " + subs.length + " subs");
+        var picked = qSort(flat).slice(0, 20);
+        console.log(tag + " Returning " + picked.length);
+        return picked;
       });
     }).catch(function (err) {
       console.log(tag + " Error: " + (err && err.message));
