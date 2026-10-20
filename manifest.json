@@ -224,7 +224,7 @@
     {
       "id": "thugtv",
       "name": "ThugTV",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Castle/Bishop/Knight sunucuları; HLS + MP4, çok dilli altyazı",
       "filename": "providers/thugtv.js",
       "supportedTypes": [
