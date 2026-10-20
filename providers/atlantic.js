@@ -1,6 +1,10 @@
 /**
  * atlantic - Atlantic provider for Nuvio (hls.lol APIs)
  * Flow: TMDB id -> cdn.hls.lol/content -> totallyacdn m3u8 master -> variants + vdrk subs
+ * Dynamic domain: domain'i DOMAINS_URL'deki JSON'dan çeker.
+ * Kendi domains.json'ni oluşturup DOMAINS_URL'yi güncelle.
+ * Örnek domains.json: { "atlantic": { "cdn": "https://cdn.hls.lol", "subs": "https://sub.vdrk.site", "ref": "http://atlantic.st/", "zcdn": "https://zcdn.bluevelvet.space" } }
+ *
  * Hermes-safe: Promise chains only, no deps.
  */
 (function () {
@@ -8,10 +12,36 @@
 
   var CDN = "https://cdn.hls.lol";
   var SUBS = "https://sub.vdrk.site";
-  var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var REF = "http://atlantic.st/";
+  var ZCDN = "https://zcdn.bluevelvet.space";
+  var DOMAINS_URL = "https://raw.githubusercontent.com/KULLANICI_ADI/REPO_ADI/main/domains.json";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
+  var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TIMEOUT = 12000;
+
+  var domainCache = { cdn: CDN, subs: SUBS, ref: REF, zcdn: ZCDN, ts: 0 };
+
+  function fetchLatestDomains() {
+    var now = Date.now();
+    if (now - domainCache.ts < 36e5) {
+      return Promise.resolve(domainCache);
+    }
+    return fetch(DOMAINS_URL).then(function (response) {
+      return response.json();
+    }).then(function (data) {
+      if (data && data.atlantic) {
+        var a = data.atlantic;
+        if (a.cdn) domainCache.cdn = a.cdn;
+        if (a.subs) domainCache.subs = a.subs;
+        if (a.ref) domainCache.ref = a.ref;
+        if (a.zcdn) domainCache.zcdn = a.zcdn;
+        domainCache.ts = now;
+      }
+      return domainCache;
+    }).catch(function (e) {
+      return domainCache;
+    });
+  }
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -139,7 +169,19 @@
     var tag = "[Atlantic]";
     console.log(tag + " Fetching " + mediaType + " " + tmdbId + (season ? " S" + season + (episode ? "E" + episode : "") : ""));
     var info = null, subs = [];
-    return tmdbLookup(tmdbId, mediaType).then(function (d) {
+    var cdn, subsUrl, ref, zcdn;
+    return fetchLatestDomains().then(function (domains) {
+      CDN = domains.cdn;
+      SUBS = domains.subs;
+      REF = domains.ref;
+      ZCDN = domains.zcdn;
+      cdn = domains.cdn;
+      subsUrl = domains.subs;
+      ref = domains.ref;
+      zcdn = domains.zcdn;
+      console.log(tag + " Using CDN: " + CDN);
+      return tmdbLookup(tmdbId, mediaType);
+    }).then(function (d) {
       info = d;
       return fetchSubs(mediaType, tmdbId, season, episode);
     }).then(function (ss) {
@@ -175,8 +217,8 @@
         }];
         return Promise.resolve(null).then(function () {
           var zurl = mediaType === "tv"
-            ? "https://zcdn.bluevelvet.space/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=tv&season=" + (season || 1) + "&episode=" + (episode || 1)
-            : "https://zcdn.bluevelvet.space/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=movie";
+            ? ZCDN + "/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=tv&season=" + (season || 1) + "&episode=" + (episode || 1)
+            : ZCDN + "/cdn?tmdb=" + encodeURIComponent(tmdbId) + "&type=movie";
           return Promise.all([
             masterInfo(d.url),
             fetchTimeout(zurl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: REF } }).then(function (rz) {
