@@ -30,6 +30,9 @@
   // true: cok sesli (tek link + oynatıcıdan dublaj secimi) kaynak yoksa
   // sadece en iyi/orijinal link doner. false: dil basina tek link doner.
   var SINGLE_LINK = false;
+  // Bu dillerdeki linkler listede gosterilmez (kucuk harf; " sub" eki yok sayilir).
+  // Bos dizi = filtre yok. Ornek: ["russian", "spanish"] da eklenebilir.
+  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam"];
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -125,6 +128,19 @@
     return /english|original|multi/i.test(String(l || ""));
   }
 
+  function baseLang(l) {
+    return cleanLang(l).toLowerCase().replace(/\s+sub$/, "").trim();
+  }
+
+  function isHiddenLang(l) {
+    var b = baseLang(l);
+    if (!b) return false;
+    for (var i = 0; i < HIDE_LANGS.length; i++) {
+      if (b === HIDE_LANGS[i]) return true;
+    }
+    return false;
+  }
+
   function listPreview(arr, max) {
     arr = arr || [];
     if (arr.length <= max) return arr.join(", ");
@@ -184,6 +200,13 @@
     }
 
     function build(items) {
+      // Gizlenecek diller: tek dilli linklerden HIDE_LANGS listesindekileri cikar.
+      // Cok sesli master'lar korunur (icinde baska diller de var).
+      var visible = items.filter(function (x) {
+        return x.audio.length > 1 || !isHiddenLang(x.lang);
+      });
+      if (visible.length) items = visible;
+
       // 1) Master'inda birden fazla ses parcasi olan kaynak varsa TEK link yeter:
       //    dublaj secimi oynaticinin "ses parcalari" menusunden yapilir.
       var multi = items.filter(function (x) { return x.audio.length > 1; });
