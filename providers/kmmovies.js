@@ -251,15 +251,24 @@
     } catch (e) { return Promise.resolve(null); }
     var jar = {};
     var landingUrl = skyUrl;
+    function storeCookie(c) {
+      if (!c) return;
+      var kv = String(c).split(";")[0].split("=");
+      if (kv.length >= 2) jar[kv[0].trim()] = kv.slice(1).join("=").trim();
+    }
     function storeCookies(r) {
       try {
-        if (r && r.headers && typeof r.headers.getSetCookie === "function") {
-          var arr = r.headers.getSetCookie() || [];
-          arr.forEach(function (c) {
-            var kv = c.split(";")[0].split("=");
-            if (kv.length >= 2) jar[kv[0].trim()] = kv.slice(1).join("=").trim();
-          });
+        if (!r || !r.headers) return;
+        var arr = [];
+        if (typeof r.headers.getSetCookie === "function") {
+          try { arr = r.headers.getSetCookie() || []; } catch (e) { arr = []; }
         }
+        // Nuvio (QuickJS/React Native) exposes only headers.get(), not getSetCookie().
+        if (!arr.length && typeof r.headers.get === "function") {
+          var sc = r.headers.get("set-cookie") || r.headers.get("Set-Cookie");
+          if (sc) arr = String(sc).split(/,(?=\s*[A-Za-z0-9_-]+=)/);
+        }
+        arr.forEach(storeCookie);
       } catch (e) {}
     }
     function cookieHeader() {
