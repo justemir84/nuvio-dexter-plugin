@@ -1,21 +1,46 @@
 /**
- * yts - YTS torrent provider for Nuvio (yts.mx)
+ * yts - YTS torrent provider for Nuvio (en.yts-official.com)
  * Flow: TMDB -> title/year -> ?api=torrents -> magnet list
  *
  * Returns magnet URIs (same contract as the Torrentio provider).
  * Magnets need a debrid service or a P2P-capable Nuvio build;
  * without one Nuvio reports "torrent streaming not supported".
  *
+ * Dynamic domain: domain'i DOMAINS_URL'deki JSON'dan çeker.
+ * Kendi domains.json'ni oluşturup DOMAINS_URL'yi güncelle.
+ * Örnek domains.json: { "yts": "https://en.yts-official.com" }
+ *
  * Hermes-safe: Promise chains only, no async/await, no generators, no deps.
  */
 (function () {
   "use strict";
 
-  var BASE = "https://yts.am/";
+  var BASE = "https://en.yts-official.com";
+  var DOMAINS_URL = "https://raw.githubusercontent.com/KULLANICI_ADI/REPO_ADI/main/domains.json";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TIMEOUT = 12000;
   var MAX_STREAMS = 12;
+
+  var domainCache = { url: BASE, ts: 0 };
+
+  function fetchLatestDomain() {
+    var now = Date.now();
+    if (now - domainCache.ts < 36e5) {
+      return Promise.resolve(domainCache.url);
+    }
+    return fetch(DOMAINS_URL).then(function (response) {
+      return response.json();
+    }).then(function (data) {
+      if (data && data.yts) {
+        domainCache.url = data.yts;
+        domainCache.ts = now;
+      }
+      return domainCache.url;
+    }).catch(function (e) {
+      return domainCache.url;
+    });
+  }
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -175,7 +200,11 @@
     console.log(tag + " Fetching " + mediaType + " " + tmdbId +
       (season ? " S" + season + (episode ? "E" + episode : "") : ""));
     var ctx = {};
-    return tmdbLookup(tmdbId, mediaType).then(function (info) {
+    return fetchLatestDomain().then(function (domain) {
+      BASE = domain;
+      console.log(tag + " Using domain: " + BASE);
+      return tmdbLookup(tmdbId, mediaType);
+    }).then(function (info) {
       if (!info.title) { console.log(tag + " TMDB lookup failed"); return []; }
       ctx.title = info.title;
       ctx.year = info.year;
