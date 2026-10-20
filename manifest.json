@@ -148,7 +148,7 @@
     {
       "id": "popwatch",
       "name": "PopWatch",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "description": "Kendi scraper ağı (7 kaynak); film + dizi, SRT altyazı",
       "filename": "providers/popwatch.js",
       "supportedTypes": [
