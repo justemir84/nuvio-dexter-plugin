@@ -38,7 +38,7 @@
     {
       "id": "yts",
       "name": "YTS",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "description": "YTS torrent provider (magnet, debrid gerektirir)",
       "filename": "providers/yts.js",
       "supportedTypes": [
