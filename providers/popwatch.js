@@ -27,6 +27,9 @@
   var TIMEOUT = 12000;
   var MAX_STREAMS = 6;
   var MAX_SUBS = 12;
+  // true: cok sesli (tek link + oynatıcıdan dublaj secimi) kaynak yoksa
+  // sadece en iyi/orijinal link doner. false: dil basina tek link doner.
+  var SINGLE_LINK = false;
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -114,47 +117,121 @@
     return out;
   }
 
+  function cleanLang(l) {
+    return String(l || "").replace(/^\s*\d+[\.\)]\s*/, "").trim();
+  }
+
+  function isOriginalLang(l) {
+    return /english|original|multi/i.test(String(l || ""));
+  }
+
+  function listPreview(arr, max) {
+    arr = arr || [];
+    if (arr.length <= max) return arr.join(", ");
+    return arr.slice(0, max).join(", ") + " +" + (arr.length - max);
+  }
+
   function vidboltStreams(tmdbId, isTv, s, e, display) {
     var qs = "type=" + (isTv ? "tv" : "movie") + "&id=" + tmdbId + (isTv ? "&season=" + s + "&episode=" + e : "");
 
+    // Ham kaynaklar: her biri bir oynatma URL'i + varsa master icindeki ses/altyazi listesi.
     function pick(j) {
       var out = [], seen = {};
-      (((j || {}).stream || {}).sources || []).forEach(function (x) {
+      (((j || {}).stream || {}).sources || []).forEach(function (x, idx) {
         if (!x || !x.url || seen[x.url]) return;
         seen[x.url] = true;
         var mi = mediaInfoFromMaster(x.master || "");
         var q = String(x.quality || x.name || "").trim() || "Auto";
         var kind = String(x.kind || "hls").toLowerCase();
-        var lang = String(x.language || "").trim();
-        if (!lang && mi.audio.length === 1) lang = mi.audio[0];
-        var meta = [];
-        if (mi.audio.length > 1) meta.push("ses: " + mi.audio.join(", "));
-        else if (mi.audio.length === 1 && lang !== mi.audio[0]) meta.push("ses: " + mi.audio.join(", "));
-        if (mi.subs.length) meta.push("altyazi: " + mi.subs.join(", "));
-        var server = ((j || {}).stream || {}).server || "";
+        var lang = cleanLang(x.language);
+        if (!lang && mi.audio.length) lang = cleanLang(mi.audio[0]);
         out.push({
-          name: "PopWatch - " + (lang ? lang + " " : "") + q,
-          title: display + "\n" + q + (lang ? " " + lang : "") +
-            " [" + (kind === "mp4" ? "MP4" : "HLS") + (server ? " - " + server : "") + "]" +
-            (meta.length ? " | " + meta.join(" | ") : ""),
           url: x.url,
-          quality: q,
-          isM3u8: kind !== "mp4",
-          type: kind === "mp4" ? "mp4" : "hls",
-          headers: { Referer: VIDBOLT + "/", "User-Agent": UA },
-          subtitles: [],
-          provider: "popwatch"
+          q: q,
+          kind: kind,
+          lang: lang,
+          audio: mi.audio,
+          subs: mi.subs,
+          server: ((j || {}).stream || {}).server || "",
+          i: idx
         });
       });
       return out;
     }
 
+    function toStream(it) {
+      var multi = it.audio.length > 1;
+      var meta = [];
+      if (multi) meta.push("ses: " + listPreview(it.audio, 8));
+      else if (it.audio.length === 1 && it.lang && it.lang.toLowerCase() !== cleanLang(it.audio[0]).toLowerCase()) {
+        meta.push("ses: " + cleanLang(it.audio[0]));
+      }
+      if (it.subs.length) meta.push("altyazi: " + listPreview(it.subs, 6));
+      return {
+        name: "PopWatch - " + (multi ? "Cok Sesli " : (it.lang ? it.lang + " " : "")) + it.q,
+        title: display + "\n" + it.q + (multi || !it.lang ? "" : " " + it.lang) +
+          " [" + (it.kind === "mp4" ? "MP4" : "HLS") + (it.server ? " - " + it.server : "") + "]" +
+          (meta.length ? " | " + meta.join(" | ") : "") +
+          (multi ? " | oynaticidan ses dili secilebilir" : ""),
+        url: it.url,
+        quality: it.q,
+        isM3u8: it.kind !== "mp4",
+        type: it.kind === "mp4" ? "mp4" : "hls",
+        headers: { Referer: VIDBOLT + "/", "User-Agent": UA },
+        subtitles: [],
+        provider: "popwatch"
+      };
+    }
+
+    function build(items) {
+      // 1) Master'inda birden fazla ses parcasi olan kaynak varsa TEK link yeter:
+      //    dublaj secimi oynaticinin "ses parcalari" menusunden yapilir.
+      var multi = items.filter(function (x) { return x.audio.length > 1; });
+      if (multi.length) {
+        multi.sort(function (a, b) {
+          var d = qRank(b.q) - qRank(a.q);
+          if (d) return d;
+          return b.audio.length - a.audio.length;
+        });
+        return [toStream(multi[0])];
+      }
+
+      // 2) Tek link modu: cok sesli kaynak yoksa en iyi (tercihen orijinal) link.
+      if (SINGLE_LINK) {
+        var one = items.slice().sort(function (a, b) {
+          var ea = isOriginalLang(a.lang) ? 0 : 1, eb = isOriginalLang(b.lang) ? 0 : 1;
+          if (ea !== eb) return ea - eb;
+          return qRank(b.q) - qRank(a.q);
+        })[0];
+        return one ? [toStream(one)] : [];
+      }
+
+      // 3) Dil basina tek link (en iyi kalite); orijinal dil ilk sirada.
+      var byLang = {}, order = [];
+      items.forEach(function (it) {
+        var key = (it.lang || "original").toLowerCase();
+        if (!byLang[key]) { byLang[key] = it; order.push(key); return; }
+        var cur = byLang[key];
+        var d = qRank(it.q) - qRank(cur.q);
+        if (d > 0 || (d === 0 && cur.kind === "mp4" && it.kind !== "mp4")) byLang[key] = it;
+      });
+      var picked = order.map(function (k) { return byLang[k]; });
+      picked.sort(function (a, b) {
+        var ea = isOriginalLang(a.lang) ? 0 : 1, eb = isOriginalLang(b.lang) ? 0 : 1;
+        if (ea !== eb) return ea - eb;
+        var d = qRank(b.q) - qRank(a.q);
+        if (d) return d;
+        return a.i - b.i;
+      });
+      return picked.slice(0, MAX_STREAMS).map(toStream);
+    }
+
     return vidboltResolve(qs).then(function (j) {
-      var found = pick(j);
+      var found = build(pick(j));
       if (found.length) return found;
       return pAll(PREFERS.map(function (p) { return vidboltResolve(qs + "&prefer=" + p); })).then(function (rs) {
         for (var i = 0; i < rs.length; i++) {
-          var f = pick((rs[i] && rs[i].ok) ? rs[i].v : null);
+          var f = build(pick((rs[i] && rs[i].ok) ? rs[i].v : null));
           if (f.length) return f;
         }
         return [];
@@ -310,7 +387,7 @@
         if (vb.length) return vb;
         return vixsrcStreams(tmdbId, isTv, s, e, display);
       }).then(function (out) {
-        out.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+        // Siralama vidboltStreams/build icinde yapilir (orijinal dil + kalite).
         out = out.slice(0, MAX_STREAMS);
         console.log(tag + " Found " + out.length + " streams");
         return out;
