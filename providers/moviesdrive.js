@@ -190,6 +190,14 @@
 
   function detectQuality(s) {
     s = String(s || "").toLowerCase();
+    // Once acik bir "1080p" varsa "UHD BluRay" gibi kaynak etiketleri
+    // cozunurlugu yanlislikla 4K'ya cekmemeli.
+    var m = s.match(/\b(2160|1440|1080|720|480)p\b/);
+    if (m) {
+      if (m[1] === "2160") return "4K";
+      if (m[1] === "1440") return "2K";
+      return m[1] + "p";
+    }
     if (/2160|4k|uhd/.test(s)) return "4K";
     if (/1440|2k/.test(s)) return "2K";
     if (/1080|fhd/.test(s)) return "1080p";
@@ -225,54 +233,150 @@
   }
 
   function parseLangs(s) {
+    var raw = String(s || "");
     var out = [];
     var re = /\b(hindi|english|tamil|telugu|kannada|malayalam|korean|japanese|spanish|french|german|arabic|urdu|punjabi|bengali|marathi|gujarati|chinese|italian|russian|turkish|dutch|portuguese)\b/gi;
     var m;
-    while ((m = re.exec(String(s || ""))) !== null) {
+    while ((m = re.exec(raw)) !== null) {
       var name = LANG_NAMES[m[1].toLowerCase()];
       if (name && out.indexOf(name) === -1) out.push(name);
     }
-    if (/dual\s*audio/i.test(String(s || "")) && out.indexOf("Dual Audio") === -1) out.push("Dual Audio");
+    if (/\bmulti(?:[.\s-]*audio)?\b/i.test(raw) && out.indexOf("Multi Audio") === -1) out.push("Multi Audio");
+    if (/dual\s*audio/i.test(raw) && out.indexOf("Dual Audio") === -1) out.push("Dual Audio");
     return out.join(", ");
+  }
+
+  function detectSource(s) {
+    var lower = String(s || "").toLowerCase();
+    if (/\bremux\b/.test(lower)) return "REMUX";
+    if (/\buhd\b/.test(lower) && /\bblu[.\s-]?ray\b/.test(lower)) return "UHD BluRay";
+    if (/\bblu[.\s-]?ray\b/.test(lower)) return "BluRay";
+    if (/\bweb[.\s-]?dl\b/.test(lower)) return "WEB-DL";
+    if (/\bweb[.\s-]?rip\b/.test(lower)) return "WEBRip";
+    if (/\bhdtv\b/.test(lower)) return "HDTV";
+    if (/\bhd[.\s-]?rip\b/.test(lower)) return "HDRip";
+    if (/\bdvd(?:rip|scr)?\b/.test(lower)) return "DVD";
+    if (/\bhdcam\b|\bcam\b/.test(lower)) return "CAM";
+    if (/\bhq[.\s-]?rip\b/.test(lower)) return "HQ Rip";
+    return "";
+  }
+
+  function detectCodec(s) {
+    var lower = String(s || "").toLowerCase();
+    if (/\bav1\b/.test(lower)) return "AV1";
+    if (/\b(?:h[.\s-]?265|hevc)\b/.test(lower) || /\bx[.\s-]?265\b/.test(lower)) return "H.265";
+    if (/\b(?:h[.\s-]?264|avc)\b/.test(lower) || /\bx[.\s-]?264\b/.test(lower)) return "H.264";
+    return "";
+  }
+
+  function detectBitDepth(s) {
+    var lower = String(s || "").toLowerCase();
+    return /\bhi10\b|\b10[.\s-]?bit\b/.test(lower) ? "10-bit" : "";
+  }
+
+  function detectHdr(s) {
+    var lower = String(s || "").toLowerCase();
+    var tags = [];
+    if (/\b(?:dolby[\s-]*vision|dovi|dv)\b/.test(lower)) tags.push("Dolby Vision");
+    if (/\bhdr[\s-]*10\s*\+/.test(lower) || /\bhdr[\s-]*10\s*plus\b/.test(lower)) tags.push("HDR10+");
+    else if (/\bhdr[\s-]*10\b/.test(lower)) tags.push("HDR10");
+    else if (/\bhdr\b/.test(lower)) tags.push("HDR");
+    if (/\bhlg\b/.test(lower)) tags.push("HLG");
+    if (!tags.length && /\bsdr\b/.test(lower)) tags.push("SDR");
+    return tags.join(" / ");
+  }
+
+  function detectAudio(s) {
+    var lower = String(s || "").toLowerCase();
+    var codec = "";
+    if (/\btrue\s*hd\b/.test(lower)) codec = "TrueHD";
+    else if (/\bdts[.\s-]*hd(?:[.\s-]*ma)?\b/.test(lower)) codec = "DTS-HD MA";
+    else if (/\bdts\b/.test(lower)) codec = "DTS";
+    else if (/\bddp(?:\s*\d+(?:\.\d+)?)?\b|\bdd\+|\be[.\s-]?ac[.\s-]?3\b/.test(lower)) codec = "DDP";
+    else if (/\bdd\s*\d+(?:\.\d+)?\b|\bdd\b(?!p)|\bac[.\s-]?3\b/.test(lower)) codec = "DD";
+    else if (/\baac\b/.test(lower)) codec = "AAC";
+    else if (/\bflac\b/.test(lower)) codec = "FLAC";
+
+    var channels = "";
+    var cm = lower.match(/(?:^|[^\d])(7\.1|5\.1|2\.1|2\.0)(?!\d)/);
+    if (cm) channels = cm[1];
+
+    var parts = [];
+    if (codec) parts.push(codec);
+    if (channels) parts.push(channels);
+    if (/\batmos\b/.test(lower)) parts.push("Atmos");
+    return parts.join(" ");
   }
 
   function parseMeta(label, qualityOverride) {
     var s = String(label || "");
-    var lower = s.toLowerCase();
     var q = qualityOverride && qualityOverride !== "Auto" ? qualityOverride : detectQuality(s);
-    var codec = "";
-    if (/x265|hevc|h265|h\.265/.test(lower)) codec = "HEVC";
-    else if (/x264|h264|h\.264|avc/.test(lower)) codec = "H.264";
-    else if (/av1/.test(lower)) codec = "AV1";
-    if (/10bit|10 bit|hi10/.test(lower)) codec = (codec ? codec + " 10bit" : "10bit");
-
-    var hdr = "";
-    if (/dolby.?vision|\bdv\b|\bdovi\b/.test(lower)) hdr = "DV";
-    else if (/hdr10\+/.test(lower)) hdr = "HDR10+";
-    else if (/hdr10/.test(lower)) hdr = "HDR10";
-    else if (/\bhdr\b/.test(lower)) hdr = "HDR";
-
-    var audio = [];
-    if (/atmos/.test(lower)) audio.push("Atmos");
-    if (/truehd/.test(lower)) audio.push("TrueHD");
-    if (/ddp?\s*5\.1|dd5\.1|5\.1/.test(lower)) audio.push("5.1");
-    else if (/ddp?\s*2\.0|dd2\.0|2\.0/.test(lower)) audio.push("2.0");
-    if (/dts/.test(lower) && audio.indexOf("DTS") === -1) audio.push("DTS");
-
-    var size = parseSize(s);
-    var langs = parseLangs(s);
-    var detail = [q, codec, hdr, audio.join(" "), size, langs].filter(function (x) {
-      return !!x;
-    }).join(" | ");
-
     return {
       quality: q,
-      codec: codec,
-      hdr: hdr,
-      audio: audio.join(" "),
+      source: detectSource(s),
+      codec: detectCodec(s),
+      bitDepth: detectBitDepth(s),
+      hdr: detectHdr(s),
+      audio: detectAudio(s),
+      size: parseSize(s),
+      langs: parseLangs(s)
+    };
+  }
+
+  function mergeMeta(base, extra) {
+    if (!extra) return base;
+    return {
+      quality: extra.quality && extra.quality !== "Auto" ? extra.quality : base.quality,
+      source: extra.source || base.source,
+      codec: extra.codec || base.codec,
+      bitDepth: extra.bitDepth || base.bitDepth,
+      hdr: extra.hdr || base.hdr,
+      audio: extra.audio || base.audio,
+      size: base.size || extra.size,
+      langs: base.langs || extra.langs
+    };
+  }
+
+  function resolutionLabel(q) {
+    return /^(?:4k|uhd)$/i.test(String(q || "")) ? "2160p" : String(q || "");
+  }
+
+  function shortHdr(hdr) {
+    return String(hdr || "").replace(/Dolby Vision/g, "DV");
+  }
+
+  function cleanFileName(name) {
+    name = stripTags(name).replace(/\s+/g, " ").trim();
+    name = name.replace(/\s*[-–—:]?\s*\[[^\]]*moviesdrive[^\]]*\]\s*[-–—:]?\s*/gi, "");
+    name = name.replace(/^copy\s+of\s+/i, "");
+    name = name.replace(/\.{2,}/g, ".");
+    return name;
+  }
+
+  // HubCloud dosya kartindan gercek dosya adi ve boyutunu cikarir.
+  function parseHubMeta(html) {
+    var s = String(html || "");
+    var size = "";
+    var m = s.match(/<[^>]*\bid=["']size["'][^>]*>([\s\S]*?)<\//i);
+    if (m) size = parseSize(stripTags(m[1]));
+    if (!size) {
+      m = s.match(/file\s*size[^0-9]{0,40}([\d.,]+\s*(?:TB|GB|MB))/i);
+      if (m) size = parseSize(m[1]);
+    }
+
+    var fileName = "";
+    m = s.match(/<[^>]*\bclass=["'][^"']*\bcard-header\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|h[1-6])>/i);
+    if (m) fileName = stripTags(m[1]);
+    if (!fileName) {
+      m = s.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      if (m) fileName = stripTags(m[1]);
+    }
+    fileName = cleanFileName(fileName);
+
+    return {
       size: size,
-      langs: langs,
-      detail: detail
+      fileName: fileName,
+      meta: fileName ? parseMeta(fileName, "Auto") : null
     };
   }
 
@@ -629,20 +733,26 @@
     var depth = 0;
     var visited = {};
 
-    function step(current, ref) {
+    function step(current, ref, inherited) {
       if (!current || visited[current] || depth > 3) return Promise.resolve(null);
       visited[current] = true;
       depth++;
       return fetchText(current, ref).then(function (html) {
+        var file = parseHubMeta(html);
+        if (inherited) {
+          if (!file.size) file.size = inherited.size;
+          if (!file.fileName) file.fileName = inherited.fileName;
+          if (!file.meta) file.meta = inherited.meta;
+        }
         var finalUrl = findFinalUrl(html);
-        if (finalUrl) return finalUrl;
+        if (finalUrl) return { url: finalUrl, file: file };
         var next = findNavUrl(html, current);
-        if (next && next !== current) return step(next, current);
+        if (next && next !== current) return step(next, current, file);
         return null;
       });
     }
 
-    return step(url, referer).catch(function (err) {
+    return step(url, referer, null).catch(function (err) {
       console.log("[MoviesDrive] HubCloud error: " + (err && err.message));
       return null;
     });
@@ -696,17 +806,47 @@
 
   // --------------------------------------------------------- stream build
 
-  function makeStream(info, meta, url, season, episode) {
+  function makeStream(info, meta, resolved, season, episode) {
+    var url = resolved && resolved.url ? resolved.url : resolved;
+    var file = resolved && resolved.file ? resolved.file : null;
+    var m = mergeMeta(meta, file && file.meta ? file.meta : null);
+    if (file && file.size) m.size = file.size;
+    if (file && file.fileName) m.fileName = file.fileName;
+
     var display = info.title + (info.year ? " (" + info.year + ")" : "");
     if (info.mediaType === "tv") {
       display += " S" + pad2(season) + "E" + pad2(episode);
     }
-    var tag = meta.codec ? " " + meta.codec : "";
+
+    var res = resolutionLabel(m.quality);
+    var head = [];
+    if (m.source) head.push(m.source);
+    if (res) head.push(res);
+    var tags = [];
+    if (m.codec) tags.push(m.codec);
+    if (m.hdr) tags.push(shortHdr(m.hdr));
+    var name = "MoviesDrive - " + [head.join(" "), tags.join(" | ")].filter(function (x) {
+      return !!x;
+    }).join(" | ");
+
+    var bits = [];
+    if (res) bits.push(res);
+    if (m.source) bits.push(m.source);
+    if (m.codec) bits.push(m.codec + (m.bitDepth ? " " + m.bitDepth : ""));
+    if (m.hdr) bits.push(m.hdr);
+    if (m.audio) bits.push(m.audio);
+    if (m.size) bits.push(m.size);
+    if (m.langs) bits.push(m.langs);
+
+    var lines = [display];
+    if (m.fileName) lines.push(m.fileName);
+    if (bits.length) lines.push(bits.join(" | "));
+
     return {
-      name: "MoviesDrive - " + meta.quality + tag,
-      title: display + "\n" + (meta.detail || meta.quality),
+      name: name,
+      title: lines.join("\n"),
       url: url,
-      quality: meta.quality,
+      quality: m.quality,
       isM3u8: false,
       provider: "moviesdrive",
       type: "direct",
@@ -728,12 +868,12 @@
         console.log("[MoviesDrive] No HubCloud link (" + cand.meta.quality + ")");
         return null;
       }
-      return resolveHubcloud(hub, cand.url).then(function (direct) {
-        if (!direct) {
+      return resolveHubcloud(hub, cand.url).then(function (resolved) {
+        if (!resolved) {
           console.log("[MoviesDrive] Direct link failed (" + cand.meta.quality + ")");
           return null;
         }
-        return makeStream(info, cand.meta, direct);
+        return makeStream(info, cand.meta, resolved);
       });
     }).catch(function (err) {
       console.log("[MoviesDrive] Candidate error (" + cand.meta.quality + "): " + (err && err.message));
@@ -748,9 +888,9 @@
         console.log("[MoviesDrive] No HubCloud link (" + group.meta.quality + ")");
         return null;
       }
-      return resolveHubcloud(hub, group.url).then(function (direct) {
-        if (!direct) return null;
-        return makeStream(info, group.meta, direct, season, episode);
+      return resolveHubcloud(hub, group.url).then(function (resolved) {
+        if (!resolved) return null;
+        return makeStream(info, group.meta, resolved, season, episode);
       });
     }).catch(function (err) {
       console.log("[MoviesDrive] Direct episode error: " + (err && err.message));
@@ -772,9 +912,9 @@
         console.log("[MoviesDrive] Episode not found in " + group.meta.quality + " (" + pageTitle + ")");
         return null;
       }
-      return resolveHubcloud(hub, group.url).then(function (direct) {
-        if (!direct) return null;
-        return makeStream(info, group.meta, direct, season, episode);
+      return resolveHubcloud(hub, group.url).then(function (resolved) {
+        if (!resolved) return null;
+        return makeStream(info, group.meta, resolved, season, episode);
       });
     }).catch(function (err) {
       console.log("[MoviesDrive] Episode group error: " + (err && err.message));
