@@ -1,6 +1,7 @@
 /**
  * thugtv - ThugTV (thugtv.online) saglayicisi - Nuvio
- * Akis: TMDB -> GET https://api.thugtv.online/api/stream/{movie/{tmdb}|tv/{tmdb}/{s}/{e}}
+ * Akis: TMDB -> GET {API_BASE}/stream/{movie/{tmdb}|tv/{tmdb}/{s}/{e}}
+ *   API_BASES: api.thugtv.online + thuktv-*.onrender.com yedekleri.
  *   sources[]:
  *     - Castle: dogrudan HLS (quality + qualityVariants 720p/480p + audioStreams + subtitles VTT)
  *     - Bishop: resolvePath /stream/direct/moviebox/... -> direct-media.png?ticket= (MP4 1080p'ye kadar)
@@ -9,19 +10,29 @@
  *   Castle imzali URL'leri API onbellegi yuzunden bazen bayat gelebilir (403).
  *   Bu yuzden dogrudan URL'ler kisa bir GET ile dogrulanir; kesin hata (>=400)
  *   alanlar diger kaynaklar varken listeden dusurulur.
+ *   Knight/vaplayer ara sira timeout verir; bir kez yeniden denenir.
+ *   Knight master playlist'indeki RESOLUTION'dan gercek kalite (1080p/720p) okunur.
  * Medya: ticket URL'leri UA ile 206 doner; Referer: https://thugtv.online/ (yine de eklenir).
  * Hermes-safe: yalniz Promise zincirleri, bagimlilik yok.
  */
 (function () {
   "use strict";
 
-  var API = "https://api.thugtv.online";
+  // thugtv.online ayni API'yi birden fazla host uzerinden sunuyor.
+  // Ana host engelli/oluysa siradaki host denenir.
+  var API_BASES = [
+    "https://api.thugtv.online/api",
+    "https://thuktv-1.onrender.com/api",
+    "https://thuktv-pmce.onrender.com/api",
+    "https://thuktv-cuqn.onrender.com/api"
+  ];
   var SITE = "https://thugtv.online/";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var TIMEOUT = 12000;
   var RTIMEOUT = 15000;
   var VTIMEOUT = 9000;
+  var MIRROR_TIMEOUT = 6000;
   var MAX_STREAMS = 12;
   var MAX_SUBS = 40;
 
@@ -46,6 +57,36 @@
     }));
   }
 
+  function delay(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function fetchApiJson(path, timeout, headers) {
+    var i = 0;
+    function attempt() {
+      if (i >= API_BASES.length) return Promise.resolve(null);
+      var base = API_BASES[i++];
+      // Ilk host icin normal timeout, yedek hostlar icin daha kisa timeout.
+      var t = i === 1 ? timeout : Math.min(timeout || TIMEOUT, MIRROR_TIMEOUT);
+      return fetchTimeout(base + path, { headers: headers }, t).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      }).catch(function () {
+        return attempt();
+      });
+    }
+    return attempt();
+  }
+
+  function fetchStreamJson(path, headers) {
+    return fetchApiJson(path, TIMEOUT, headers).then(function (j) {
+      if (j && j.sources && j.sources.length) return j;
+      // Butun hostlar basarisiz olduysa tekrar denemek sadece gecikme ekler.
+      if (!j) return null;
+      return fetchApiJson(path, TIMEOUT, headers);
+    });
+  }
+
   function qRank(q) {
     q = String(q || "").toLowerCase();
     if (q === "auto") return 2.5;
@@ -66,6 +107,21 @@
     if (/480/.test(l)) return "480p";
     if (/360/.test(l)) return "360p";
     return "Auto";
+  }
+
+  function qualityFromWidth(w) {
+    w = parseInt(w, 10) || 0;
+    if (w >= 3800) return "2160p";
+    if (w >= 2500) return "1440p";
+    if (w >= 1900) return "1080p";
+    if (w >= 1200) return "720p";
+    if (w >= 800) return "480p";
+    if (w >= 600) return "360p";
+    return "";
+  }
+
+  function directPath(kind, isTv, tmdbId, s, e) {
+    return "/stream/direct/" + kind + "/" + (isTv ? "tv/" + tmdbId + "/" + s + "/" + e : "movie/" + tmdbId);
   }
 
   function pad(n) { return (n < 10 ? "0" : "") + n; }
@@ -127,15 +183,16 @@
       return r.ok ? r.text() : "";
     }, function () { return ""; }).then(function (t) {
       if (!t || t.indexOf("#EXTM3U") !== 0 || t.indexOf("#EXT-X-STREAM-INF") === -1) return null;
-      var lines = t.split(/\r?\n/), bestH = -1, bestLine = "", curLine = "", i;
+      var lines = t.split(/\r?\n/), bestW = -1, bestH = 0, bestLine = "", curLine = "", i;
       for (i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
         if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
           curLine = line;
         } else if (line && line.charAt(0) !== "#" && curLine) {
-          var m = curLine.match(/RESOLUTION=\d+x(\d+)/);
-          var h = m ? parseInt(m[1], 10) : 0;
-          if (h >= bestH) { bestH = h; bestLine = curLine; }
+          var m = curLine.match(/RESOLUTION=(\d+)x(\d+)/);
+          var w = m ? parseInt(m[1], 10) : 0;
+          var h = m ? parseInt(m[2], 10) : 0;
+          if (w >= bestW) { bestW = w; bestH = h; bestLine = curLine; }
           curLine = "";
         }
       }
@@ -143,7 +200,9 @@
       var cds = (bestLine.match(/CODECS="([^"]+)"/i) || [])[1] || "";
       var rng = (bestLine.match(/VIDEO-RANGE=([A-Z0-9]+)/i) || [])[1] || "";
       var ct = codecTags(cds, rng);
-      return (ct.v || ct.extra) ? ct : null;
+      ct.width = bestW > 0 ? bestW : 0;
+      ct.height = bestH;
+      return ct;
     });
   }
 
@@ -152,12 +211,12 @@
     var isTv = mediaType === "tv";
     var s = season || 1;
     var e = episode || 1;
-    var path = isTv ? "/api/stream/tv/" + tmdbId + "/" + s + "/" + e : "/api/stream/movie/" + tmdbId;
+    var path = isTv ? "/stream/tv/" + tmdbId + "/" + s + "/" + e : "/stream/movie/" + tmdbId;
     var display = "";
-    var headers = { "User-Agent": UA, Accept: "application/json", Referer: SITE };
+    var headers = { "User-Agent": UA, Accept: "application/json", Referer: SITE, "Cache-Control": "no-cache", Pragma: "no-cache" };
 
     return pAll([
-      fetchTimeout(API + path, { headers: headers }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
+      fetchStreamJson(path, headers),
       tmdbLookup(tmdbId, isTv)
     ]).then(function (results) {
       var j = (results[0] && results[0].ok) ? results[0].v : null;
@@ -192,18 +251,43 @@
               audio: (src.audioStreams || []).length
             });
           });
-        } else if (!u && src.resolvePath && resolves.length < 2 && /direct\/(moviebox|vaplayer)\//.test(String(src.resolvePath))) {
+        } else if (!u && src.resolvePath && resolves.length < 4 && /\/direct\//.test(String(src.resolvePath))) {
           resolves.push(src);
         }
       });
 
+      // Ana API bazen bos/504 donebilir veya Castle disinda kaynak
+      // dondurmez. Bu durumda Knight/Bishop yollarini dogrudan dene.
+      function addFallback(name, kind) {
+        if (resolves.length >= 4) return;
+        var p = directPath(kind, isTv, tmdbId, s, e);
+        for (var i = 0; i < resolves.length; i++) {
+          if (String(resolves[i].resolvePath) === p) return;
+        }
+        resolves.push({ name: name, resolvePath: p });
+      }
+      addFallback("Knight", "vaplayer");
+      addFallback("Bishop", "moviebox");
+
       var resolveP = pAll(resolves.map(function (src) {
-        return fetchTimeout(API + "/api" + src.resolvePath, { headers: headers }, RTIMEOUT)
-          .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })
-          .then(function (rj) {
-            if (!rj || rj.status !== "ready" || !rj.source || !rj.source.url) return null;
-            return fromSource(rj, src.name);
+        function once() {
+          return fetchApiJson(src.resolvePath, RTIMEOUT, headers).then(function (rj) {
+            if (!rj) return { retry: false, v: null };
+            if (rj.status === "ready" && rj.source && rj.source.url) {
+              return { retry: false, v: fromSource(rj, src.name) };
+            }
+            // MovieBox 406 gibi kalici hatalarda tekrar denemek anlamsiz.
+            var persistent = rj.status === "upstream_error" || /HTTP 406/.test(String(rj.error || ""));
+            return { retry: !persistent, v: null };
           });
+        }
+        // Knight/vaplayer ara sira timeout/delivery_unavailable veriyor;
+        // kisa bir beklemeden sonra bir kez daha dene.
+        return once().then(function (r) {
+          if (r.v) return r.v;
+          if (!r.retry) return null;
+          return delay(900).then(once).then(function (r2) { return r2.v; });
+        });
       }));
 
       return resolveP.then(function (resolved) {
@@ -237,16 +321,22 @@
             });
             var out = kept.map(function (f) {
               var mt = tmap[f.url];
-              var bits = [f.q];
+              var q = f.q;
+              // Knight gibi master playlist donduren kaynaklarda gercek
+              // cozunurluk RESOLUTION satirindan okunur.
+              if (mt && mt.width && (!q || q === "Auto" || qRank(q) < 1.5)) {
+                q = qualityFromWidth(mt.width) || q;
+              }
+              var bits = [q];
               if (mt && mt.v) bits.push(mt.v);
               if (mt && mt.extra) bits.push(mt.extra);
               if (f.audio > 1) bits.push("Multi-Audio");
               if (f.subs.length) bits.push(f.subs.length + " subs");
               return {
-                name: "ThugTV - " + f.name + " " + f.q + (mt && mt.v ? " " + mt.v : ""),
+                name: "ThugTV - " + f.name + " " + q + (mt && mt.v ? " " + mt.v : ""),
                 title: display + "\n" + bits.join(" - "),
                 url: f.url,
-                quality: f.q,
+                quality: q,
                 isM3u8: !!f.isHls,
                 type: f.isHls ? "hls" : "mp4",
                 headers: { Referer: SITE, "User-Agent": UA },
