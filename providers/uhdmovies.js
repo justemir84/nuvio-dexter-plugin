@@ -1,19 +1,19 @@
 /**
  * uhdmovies - UHDMovies.us.org provider for Nuvio
- * Flow: TMDB id -> TMDB title/year -> UHDMovies WordPress search (?s=) -> post page
- *       -> thenaukriadda ad-gate -> DriveSeed -> Google video CDN (direct MKV/MP4)
+ * Flow: TMDB id -> TMDB title/year -> uhdmovies WordPress search (?s=) -> post page -> Google Drive download links
+ * Site: https://uhdmovies.us.org (indirme sitesi; Google Drive doku linkleri)
  * Hermes-safe: Promise chains only, no async/await, no deps.
+ *
+ * NOT: Bu site akış (streaming) sitesi degildir, indirme sitesidir.
+ * Dondurulen linkler en.thenaukriadda.in üzerinden Google Drive'a yonlendirir.
+ * Nuvio bu ara sayfalari direk video akisi olarak oynatamayabilir (buffering/takilma).
  */
 (function () {
   "use strict";
 
   var BASE_URL = "https://uhdmovies.us.org";
-  var REQUEST_TIMEOUT = 12000;
-  var RESOLVE_TIMEOUT = 24000;
-  var MAX_STREAMS = 5;
+  var REQUEST_TIMEOUT = 15000;
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-  // Ayni anahtar diger Nuvio saglayicilarinda de kullaniliyor; ayarlardan bos birakilirsa bu kullanilir.
-  var DEFAULT_TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
 
   function fetchWithTimeout(url, options, timeout) {
     var timer = null;
@@ -37,129 +37,71 @@
   }
 
   function tmdbLookup(tmdbId, isTv, apiKey) {
+    if (!apiKey) return Promise.resolve(null);
     var path = isTv ? "/tv/" : "/movie/";
     return fetchWithTimeout("https://api.themoviedb.org/3" + path + tmdbId + "?api_key=" + encodeURIComponent(apiKey) + "&language=en-US", {
       headers: { "User-Agent": UA, Accept: "application/json" }
     }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
   }
 
-  function baseHeaders(extra) {
-    var h = { "User-Agent": UA, Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8" };
-    if (extra) for (var k in extra) h[k] = extra[k];
-    return h;
-  }
-
-  function createJar() {
-    var jar = {};
+  function parseRelease(s) {
+    s = " " + String(s || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
+    var codec = /x265|hevc|h265|h\.265/.test(s) ? "HEVC x265" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : (/av1/.test(s) ? "AV1" : ""));
+    var depth = /10bit|10 bit|hi10/.test(s) ? "10-bit" : "";
+    var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : "")));
+    var audio = /truehd/.test(s) ? "TrueHD" : (/dts.?hd|dts-hd/.test(s) ? "DTS-HD" : (/dts/.test(s) ? "DTS" : (/atmos/.test(s) ? "Atmos" : (/ddp|eac3|dd\+/.test(s) ? "DDP" : (/ac-3|ac3/.test(s) ? "DD" : (/aac/.test(s) ? "AAC" : ""))))));
+    var ach = /ddp\.?5\.1|dd\.?5\.1|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : (/2\.0/.test(s) ? "2.0" : ""));
+    var src = /remux/.test(s) ? "REMUX" : (/blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/webrip/.test(s) ? "WEBRip" : (/hdtv/.test(s) ? "HDTV" : (/dvdrip|dvd/.test(s) ? "DVD" : "")))));
+    var lang = /dual/.test(s) ? "Dual Audio" : (/multi|multi.audio/.test(s) ? "Multi Audio" : "");
     return {
-      store: function (res) {
-        try {
-          if (!res || !res.headers) return;
-          var arr = [];
-          if (typeof res.headers.getSetCookie === "function") arr = res.headers.getSetCookie() || [];
-          if (!arr.length && typeof res.headers.get === "function") {
-            var sc = res.headers.get("set-cookie") || res.headers.get("Set-Cookie");
-            if (sc) arr = String(sc).split(/,(?=\s*[A-Za-z0-9_-]+=)/);
-          }
-          arr.forEach(function (c) {
-            var kv = String(c).split(";")[0].split("=");
-            if (kv.length >= 2) jar[kv[0].trim()] = kv.slice(1).join("=").trim();
-          });
-        } catch (e) {}
-      },
-      set: function (k, v) { jar[k] = v; },
-      header: function () {
-        var parts = [];
-        for (var k in jar) parts.push(k + "=" + jar[k]);
-        return parts.join("; ");
-      }
+      codec: codec,
+      depth: depth,
+      hdr: hdr,
+      audio: (audio + (ach ? " " + ach : "")).trim(),
+      src: src,
+      lang: lang
     };
   }
 
-  function request(url, options, jar) {
-    var opt = options || {};
-    var h = baseHeaders(opt.headers);
-    if (jar) {
-      var c = jar.header();
-      if (c) h.Cookie = c;
-    }
-    opt.headers = h;
-    return fetchWithTimeout(url, opt).then(function (res) {
-      if (jar) jar.store(res);
-      return res;
-    });
+  function parseSize(text) {
+    var m = String(text || "").match(/\[([\d.,]+\s*(?:TB|GB|MB))\]/i);
+    if (!m) m = String(text || "").match(/([\d.,]+\s*(?:TB|GB|MB))/i);
+    return m ? m[1] : "";
   }
 
-  function readPage(res, fallbackUrl) {
-    return res.text().then(function (html) {
-      return { html: html, url: res.url || fallbackUrl };
-    });
+  function qualityFromText(text) {
+    var t = String(text || "").toLowerCase();
+    if (/2160|4k|uhd/.test(t)) return "2160p";
+    if (/1440|2k/.test(t)) return "1440p";
+    if (/1080/.test(t)) return "1080p";
+    if (/720/.test(t)) return "720p";
+    if (/480/.test(t)) return "480p";
+    return "Auto";
   }
 
-  function getPage(url, jar) {
-    return request(url, {}, jar).then(function (res) {
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return readPage(res, url);
-    });
-  }
-
-  function absoluteUrl(base, href) {
-    href = String(href || "").replace(/\\\//g, "/");
-    if (/^https?:\/\//i.test(href)) return href;
-    if (href.indexOf("//") === 0) return "https:" + href;
-    if (href.charAt(0) === "/") {
-      var m = String(base || "").match(/^(https?:\/\/[^\/]+)/i);
-      return (m ? m[1] : BASE_URL) + href;
-    }
-    return String(base || BASE_URL).replace(/\/[^\/]*$/, "/") + href;
+  function qRank(q) {
+    q = String(q || "").toLowerCase();
+    if (q === "auto") return 2.5;
+    if (/2160|4k|uhd/.test(q)) return 5;
+    if (/1440|2k/.test(q)) return 4;
+    if (/1080|fhd/.test(q)) return 3;
+    if (/720|hd/.test(q)) return 2;
+    if (/480|sd/.test(q)) return 1;
+    return 0.5;
   }
 
   function cleanText(html) {
     return String(html || "")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
       .replace(/<[^>]*>/g, " ")
       .replace(/&nbsp;|&#160;/gi, " ")
-      .replace(/&#8211;|&#8212;/gi, "-")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;/gi, "\"")
-      .replace(/&#0?39;|&apos;/gi, "'")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
       .replace(/&\w+;/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
 
   function extractOgImage(html) {
-    var m = String(html || "").match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+    var m = html.match(/<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']/i);
     return m ? m[1] : null;
-  }
-
-  // "UHDMovies" kanal adi 4K sanilmasin: kelime siniri kullan.
-  function qualityFromText(text) {
-    var t = " " + String(text || "").toLowerCase() + " ";
-    if (/\b(2160p?|4k|uhd)\b/.test(t)) return "2160p";
-    if (/\b(1440p?|2k)\b/.test(t)) return "1440p";
-    if (/\b1080p?\b/.test(t)) return "1080p";
-    if (/\b720p?\b/.test(t)) return "720p";
-    if (/\b(480p?|sd)\b/.test(t)) return "480p";
-    return "Auto";
-  }
-
-  function sizeFromText(text) {
-    var m = String(text || "").match(/\[\s*([\d.]+\s*(?:GB|MB))\s*\]/i);
-    return m ? m[1].replace(/\s+/g, "") : "";
-  }
-
-  function qRank(q) {
-    q = String(q || "").toLowerCase();
-    if (/2160|4k|uhd/.test(q)) return 5;
-    if (/1440|2k/.test(q)) return 4;
-    if (/1080|fhd/.test(q)) return 3;
-    if (/720|hd/.test(q)) return 2;
-    if (/480|sd/.test(q)) return 1;
-    return 2.5;
   }
 
   function searchPosts(query) {
@@ -182,67 +124,46 @@
     }).catch(function () { return []; });
   }
 
-  // Post icindeki indirme butonlarini sirayla bulur; kalite/boyut etiketi
-  // butonun bulundugu <hr> blogunun basindaki aciklamadir.
-  function parseDownloadLinks(html, isTv, season, episode) {
+  function parseDownloadLinks(html) {
     var links = [];
-    var seen = {};
-    var segments = String(html || "").split(/<hr\b[^>]*>|<div[^>]*mks_separator[^>]*>/i);
+    var poster = extractOgImage(html);
+    var lastQuality = "";
+    var lastSize = "";
 
-    segments.forEach(function (seg) {
-      var anchors = seg.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
-      var groupLabel = "";
-      if (isTv) {
-        groupLabel = cleanText(seg).replace(/Episode\s*0?\d+/gi, " ").replace(/\s+/g, " ").trim();
-        if (groupLabel.length > 240) groupLabel = groupLabel.slice(0, 240);
-      }
+    var pRegex = /<p[^>]*style="text-align: center;"[^>]*>([\s\S]*?)<\/p>/gi;
+    var match;
 
-      anchors.forEach(function (a) {
-        if (a.indexOf("thenaukriadda.in") === -1 && a.indexOf("drive.google.com") === -1) return;
-        var hrefMatch = a.match(/href="([^"]+)"/i);
-        if (!hrefMatch) return;
-        var href = hrefMatch[1].replace(/&amp;/g, "&");
-        var anchorText = cleanText(a);
-        var isEpisode = /maxbutton-gdrive-episode/i.test(a);
-        var isMovieBtn = /maxbutton-download-g-drive|maxbutton-gdrive/i.test(a);
-        if (!isEpisode && !isMovieBtn) return;
+    while ((match = pRegex.exec(html)) !== null) {
+      var p = match[0];
+      var text = cleanText(p);
 
-        var label = isTv ? groupLabel : cleanText(seg);
-        if (!isTv) {
-          label = label.replace(/Download\s*\(G-Drive\)/ig, " ")
-            .replace(/Download\s*From\s*Google\s*Drive/ig, " ")
-            .replace(/\s+/g, " ").trim();
-          if (label.length > 240) label = label.slice(0, 240);
+      var hasDownload = p.indexOf("thenaukriadda.in") !== -1 || p.indexOf("maxbutton-download-g-drive") !== -1;
+
+      if (hasDownload) {
+        var urlMatch = p.match(/href="([^"]*thenaukriadda\.in[^"]*)"/i);
+        if (urlMatch) {
+          links.push({
+            url: urlMatch[1],
+            quality: qualityFromText(lastQuality),
+            size: parseSize(lastQuality),
+            text: lastQuality,
+            poster: poster
+          });
         }
-
-        var epNum = 0;
-        var epMatch = anchorText.match(/(?:episode|ep|e)\s*0*(\d+)/i);
-        if (epMatch) epNum = parseInt(epMatch[1], 10);
-
-        var quality = qualityFromText(label);
-        var size = sizeFromText(label);
-
-        if (isTv && episode && epNum && epNum !== parseInt(episode, 10)) return;
-        if (isTv && !episode && epNum) return;
-
-        var key = href + "|" + quality + "|" + epNum;
-        if (seen[key]) return;
-        seen[key] = true;
-
-        links.push({
-          url: href,
-          label: label,
-          quality: quality,
-          size: size,
-          episode: epNum
-        });
-      });
-    });
+        lastQuality = "";
+        lastSize = "";
+      } else {
+        if (text.length > 0) {
+          lastQuality = text;
+          lastSize = parseSize(text);
+        }
+      }
+    }
 
     return links;
   }
 
-  function findBestMatch(posts, title, year, season, isTv) {
+  function findBestMatch(posts, title, year) {
     var t = (title || "").toLowerCase();
     var y = String(year || "");
     var best = null;
@@ -256,10 +177,6 @@
       else if (t.split(" ").filter(function (w) { return w.length > 2; }).every(function (w) { return pt.indexOf(w) !== -1; })) score += 5;
 
       if (y && pt.indexOf("(" + y + ")") !== -1) score += 5;
-      if (isTv && season) {
-        var sn = String(season);
-        if (new RegExp("season\\s*0?" + sn + "\\b", "i").test(pt) || new RegExp("s0?" + sn + "e", "i").test(pt)) score += 3;
-      }
 
       if (score > bestScore) {
         bestScore = score;
@@ -270,173 +187,6 @@
     return bestScore > 0 ? best : null;
   }
 
-  function parseLpForm(html) {
-    var forms = String(html || "").match(/<form\b[^>]*>[\s\S]*?<\/form>/gi) || [];
-    for (var i = 0; i < forms.length; i++) {
-      var form = forms[i];
-      var inputRe = /<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
-      var inputs = [];
-      var m;
-      while ((m = inputRe.exec(form)) !== null) {
-        inputs.push([m[1], m[2].replace(/&amp;/g, "&")]);
-      }
-      if (!inputs.length) continue;
-      var hasLp = inputs.some(function (x) { return x[0].indexOf("_lp_") === 0; });
-      if (!hasLp) continue;
-      var action = (form.match(/action="([^"]*)"/i) || [])[1] || "";
-      return { action: action, inputs: inputs };
-    }
-    return null;
-  }
-
-  function postForm(url, form, jar) {
-    var body = form.inputs.map(function (x) {
-      return encodeURIComponent(x[0]) + "=" + encodeURIComponent(x[1]);
-    }).join("&");
-    var origin = (String(url).match(/^(https?:\/\/[^\/]+)/i) || [])[1] || BASE_URL;
-    return request(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Origin: origin,
-        Referer: origin + "/"
-      },
-      body: body
-    }, jar).then(function (res) {
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return readPage(res, url);
-    });
-  }
-
-  function jsRedirect(html) {
-    var m = String(html || "").match(/window\.location\.replace\(\s*["']([^"']+)["']\s*\)/i);
-    return m ? m[1].replace(/\\\//g, "/") : "";
-  }
-
-  function findInstantLink(html) {
-    var anchors = String(html || "").match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
-    for (var i = 0; i < anchors.length; i++) {
-      var text = cleanText(anchors[i]);
-      if (!/instant\s*download/i.test(text)) continue;
-      var href = (anchors[i].match(/href="([^"]+)"/i) || [])[1];
-      if (href) return href.replace(/&amp;/g, "&");
-    }
-    var m = String(html || "").match(/https?:\/\/cdn\.video-gen\.xyz\/[^"'\s<>]+/i);
-    return m ? m[0] : "";
-  }
-
-  function queryParam(url, name) {
-    var q = String(url || "").split("#")[0].split("?")[1] || "";
-    var parts = q.split("&");
-    for (var i = 0; i < parts.length; i++) {
-      var kv = parts[i].split("=");
-      if (kv[0] === name) {
-        try { return decodeURIComponent(kv.slice(1).join("=")); } catch (e) { return kv.slice(1).join("="); }
-      }
-    }
-    return "";
-  }
-
-  function googleVideoTarget(res, fallbackUrl) {
-    var finalUrl = res.url || fallbackUrl || "";
-    var target = queryParam(finalUrl, "url");
-    if (!target && res.headers && typeof res.headers.get === "function") {
-      var loc = res.headers.get("location") || "";
-      target = queryParam(loc, "url");
-    }
-    if (target && /googleusercontent\.com/i.test(target)) return target;
-    return "";
-  }
-
-  function resolveCdn(cdnUrl, jar) {
-    return request(cdnUrl, { headers: { Referer: "https://driveseed.org/" } }, jar).then(function (res) {
-      var target = googleVideoTarget(res, cdnUrl);
-      if (target) return target;
-      return res.text().then(function (html) {
-        var m = String(html || "").match(/https?:\/\/(?:video-downloads\.)?googleusercontent\.com\/[^"'\s<>]+/i);
-        if (m) return m[0];
-        throw new Error("CDN hedefi bulunamadi");
-      });
-    });
-  }
-
-  function normalizeDriveUrl(url) {
-    if (/googleusercontent\.com/i.test(url)) return url;
-    var m = String(url || "").match(/\/file\/d\/([^\/]+)/) || String(url || "").match(/[?&]id=([^&]+)/);
-    if (m) return "https://drive.usercontent.google.com/download?id=" + m[1] + "&export=download&confirm=t";
-    return url;
-  }
-
-  // thenaukriadda ara sayfasi: form POST'lari -> lp_go cookie -> driveseed -> file -> CDN
-  function resolveLink(linkUrl) {
-    if (/^https?:\/\/(?:drive|docs)\.google\.com\//i.test(linkUrl) || /googleusercontent\.com/i.test(linkUrl)) {
-      return Promise.resolve(normalizeDriveUrl(linkUrl));
-    }
-
-    var jar = createJar();
-    var stageUrl = linkUrl;
-
-    function postStage(page) {
-      var form = parseLpForm(page.html);
-      if (!form) throw new Error("LP formu bulunamadi");
-      return postForm(absoluteUrl(page.url, form.action || page.url), form, jar);
-    }
-
-    return getPage(stageUrl, jar)
-      .then(postStage)              // _lp_http
-      .then(postStage)              // _lp_http2
-      .then(function (page) {
-        var sc = page.html.match(/sc\(\s*["'](lp-[^"']+)["']\s*,\s*["']([^"']+)["']/i);
-        var go = page.html.match(/setAttribute\(\s*["']href["']\s*,\s*["']([^"']*\?lp_go=[^"']+)["']/i) ||
-                 page.html.match(/["']([^"']*\?lp_go=[^"']+)["']/i);
-        if (!sc || !go) throw new Error("LP devam adimi bulunamadi");
-        jar.set(sc[1], sc[2]);
-        return getPage(absoluteUrl(page.url, go[1].replace(/\\\//g, "/")), jar);
-      })
-      .then(function (page) {
-        var loc = jsRedirect(page.html);
-        if (!loc) throw new Error("DriveSeed yonlendirmesi yok");
-        return getPage(absoluteUrl(page.url, loc), jar);
-      })
-      .then(function (page) {
-        var loc = jsRedirect(page.html);
-        if (!loc) throw new Error("DriveSeed dosya yonlendirmesi yok");
-        return getPage(absoluteUrl(page.url, loc), jar);
-      })
-      .then(function (page) {
-        var cdn = findInstantLink(page.html);
-        if (!cdn) throw new Error("DriveSeed indirme linki yok");
-        return resolveCdn(absoluteUrl(page.url, cdn), jar);
-      });
-  }
-
-  function withTimeout(promise, ms, label) {
-    return Promise.race([
-      promise,
-      new Promise(function (_, reject) {
-        setTimeout(function () { reject(new Error(label + " timeout")); }, ms);
-      })
-    ]);
-  }
-
-  function pickLinks(links) {
-    var byQuality = {};
-    links.forEach(function (l) {
-      var q = l.quality || "Auto";
-      if (!byQuality[q]) byQuality[q] = [];
-      byQuality[q].push(l);
-    });
-
-    var order = ["2160p", "1440p", "1080p", "720p", "480p", "Auto"];
-    var picked = [];
-    order.forEach(function (q) {
-      var arr = byQuality[q] || [];
-      var cap = (q === "1080p" || q === "2160p") ? 3 : 1;
-      arr.slice(0, cap).forEach(function (l) { if (picked.length < MAX_STREAMS) picked.push(l); });
-    });
-    return picked;
-  }
-
   function onSettings() {
     return [
       { type: "header", label: "UHDMovies" },
@@ -444,8 +194,8 @@
         type: "text",
         key: "tmdbApiKey",
         label: "Personal TMDB API key (optional)",
-        placeholder: "Leave blank to use the built-in key",
-        description: "Optional TMDB v3 key. Leave blank to use the shared key bundled with the provider."
+        placeholder: "Leave blank to use Nuvio's built-in key",
+        description: "Optional TMDB v3 key. If left blank, UHDMovies uses the TMDB key configured by Nuvio."
       }
     ];
   }
@@ -454,80 +204,81 @@
     var tag = "[uhdmovies]";
     var isTv = mediaType === "tv";
     settings = (typeof SCRAPER_SETTINGS !== "undefined" && SCRAPER_SETTINGS) || settings || {};
-    var tmdbKey = settings.tmdbApiKey || (typeof TMDB_API_KEY !== "undefined" ? TMDB_API_KEY : "") || DEFAULT_TMDB_KEY;
+    var tmdbKey = settings.tmdbApiKey || (typeof TMDB_API_KEY !== "undefined" ? TMDB_API_KEY : "") || "";
+
+    if (!tmdbKey) {
+      console.log(tag + " TMDB API anahtarı ayarlanmamış. Nuvio'da UHDMovies eklenti ayarlarından TMDB API Key girin.");
+      return Promise.resolve([]);
+    }
 
     return tmdbLookup(tmdbId, isTv, tmdbKey).then(function (info) {
-      if (!info) throw new Error("TMDB lookup failed");
+      if (!info) return [];
       var title = info.title || info.name || "";
       var year = String(info.release_date || info.first_air_date || "").slice(0, 4);
       var display = title + (year ? " (" + year + ")" : "");
-      if (isTv && season) {
-        display += " S" + (season < 10 ? "0" + season : season) +
-          (episode ? "E" + (episode < 10 ? "0" + episode : episode) : "");
-      }
+      if (isTv && season) display += " S" + (season < 10 ? "0" + season : season) + (episode ? "E" + (episode < 10 ? "0" + episode : episode) : "");
 
-      // Dizilerde bolum numarasi aramaya eklenmez; UHDMovies sezonun tum
-      // bolumlerini tek postta "Episode N" butonlariyla listeliyor.
-      var query = title + (year ? " " + year : "");
+      var query = title;
+      if (year) query += " " + year;
+      if (isTv && season) query += " Season " + season;
+      if (isTv && episode) query += " Episode " + episode;
+
       console.log(tag + " Searching: " + query);
 
       return searchPosts(query).then(function (posts) {
-        var match = findBestMatch(posts, title, year, season, isTv);
+        var match = findBestMatch(posts, title, year);
         if (!match) {
-          console.log(tag + " No matching post found");
+          console.log(tag + " Yil eşlesmesi bulunamadi, yıl olmayan arama deneniyor");
+          return searchPosts(title).then(function (posts2) {
+            return findBestMatch(posts2, title, "");
+          });
+        }
+        return match;
+      }).then(function (match) {
+        if (!match) {
+          console.log(tag + " Eşleşen yayin bulunamadi");
           return [];
         }
-        console.log(tag + " Matched post: " + match.title);
+        console.log(tag + " Eslesen sayfa: " + match.title);
 
         return fetchText(match.url, { headers: { "User-Agent": UA } }).then(function (html) {
-          var poster = extractOgImage(html);
-          var links = parseDownloadLinks(html, isTv, season, episode);
-          console.log(tag + " Download links: " + links.length +
-            " (" + links.map(function (l) { return l.quality + (l.episode ? "/E" + l.episode : "") + (l.size ? "/" + l.size : ""); }).join(", ") + ")");
+          var links = parseDownloadLinks(html);
+          var streams = links.map(function (link) {
+            var q = link.quality || "Auto";
+            var rel = parseRelease(link.text);
+            var size = link.size || "";
+            var namePart = [];
+            if (rel.src) namePart.push(rel.src);
+            if (rel.codec) namePart.push(rel.codec);
+            if (rel.depth) namePart.push(rel.depth);
+            if (rel.hdr) namePart.push(rel.hdr);
+            if (rel.audio) namePart.push(rel.audio);
+            if (rel.lang) namePart.push(rel.lang);
+            if (size) namePart.push(size);
 
-          var picked = pickLinks(links);
-          if (!picked.length) {
-            console.log(tag + " No download links after episode/quality filter");
-            return [];
-          }
+            var streamName = "UHDMovies";
+            if (namePart.length) streamName += " - " + namePart.join(" / ");
 
-          var jobs = picked.map(function (link) {
-            return withTimeout(resolveLink(link.url), RESOLVE_TIMEOUT, "resolve")
-              .then(function (direct) {
-                if (!direct) return null;
-                var q = link.quality || "Auto";
-                var size = link.size ? " " + link.size : "";
-                var stream = {
-                  name: "UHDMovies " + q + size,
-                  title: display + "\n" + q + size + (link.label ? "\n" + link.label : ""),
-                  url: direct,
-                  quality: q,
-                  isM3u8: false,
-                  type: "direct",
-                  subtitles: [],
-                  provider: "uhdmovies",
-                  headers: { "User-Agent": UA }
-                };
-                if (link.size) stream.size = link.size;
-                if (poster) stream.image = poster;
-                return stream;
-              })
-              .catch(function (err) {
-                console.log(tag + " Resolve failed (" + link.quality + "): " + (err && err.message));
-                return null;
-              });
+            var stream = {
+              name: streamName,
+              title: display + "\n" + q + (namePart.length ? " | " + namePart.join(" / ") : ""),
+              url: link.url,
+              quality: q,
+              isM3u8: false,
+              type: "direct",
+              subtitles: [],
+              provider: "uhdmovies"
+            };
+            if (link.poster) stream.image = link.poster;
+            return stream;
           });
-
-          return Promise.all(jobs).then(function (results) {
-            var streams = results.filter(function (s) { return !!s; });
-            streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
-            console.log(tag + " Found " + streams.length + " playable streams");
-            return streams;
-          });
+          streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+          console.log(tag + " Bulunan akış: " + streams.length);
+          return streams;
         });
       });
     }).catch(function (err) {
-      console.log(tag + " Error: " + (err && err.message));
+      console.log(tag + " Hata: " + (err && err.message));
       return [];
     });
   }
