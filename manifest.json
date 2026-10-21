@@ -340,6 +340,27 @@
         "hi",
         "en"
       ]
+    },
+    {
+      "id": "uhdmovies",
+      "name": "UHDMovies",
+      "version": "1.0.0",
+      "description": "UHDMovies.us.org; TMDB başlığı/yıl ile arama, Google Drive doğrudan indirme bağlantıları (MP4/MKV), 2160p'ye kadar",
+      "filename": "providers/uhdmovies.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": true,
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
     }
   ]
 }
