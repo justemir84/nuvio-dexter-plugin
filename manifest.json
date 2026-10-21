@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.4",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies sağlayıcıları",
+  "version": "2.3.5",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, Febbox sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -360,6 +360,23 @@
       "contentLanguage": [
         "en",
         "hi"
+      ]
+    },
+    {
+      "id": "febbox",
+      "name": "Febbox",
+      "version": "1.0.0",
+      "description": "Febbox / SuperStream kaynakları; Febbox token gerekir.",
+      "filename": "providers/febbox.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": true,
+      "formats": [
+        "mp4",
+        "mkv"
       ]
     }
   ]
