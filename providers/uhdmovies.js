@@ -44,31 +44,6 @@
     }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
   }
 
-  function parseRelease(s) {
-    s = " " + String(s || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
-    var codec = /x265|hevc|h265|h\.265/.test(s) ? "HEVC x265" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : (/av1/.test(s) ? "AV1" : ""));
-    var depth = /10bit|10 bit|hi10/.test(s) ? "10-bit" : "";
-    var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : "")));
-    var audio = /truehd/.test(s) ? "TrueHD" : (/dts.?hd|dts-hd/.test(s) ? "DTS-HD" : (/dts/.test(s) ? "DTS" : (/atmos/.test(s) ? "Atmos" : (/ddp|eac3|dd\+/.test(s) ? "DDP" : (/ac-3|ac3/.test(s) ? "DD" : (/aac/.test(s) ? "AAC" : ""))))));
-    var ach = /ddp\.?5\.1|dd\.?5\.1|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : (/2\.0/.test(s) ? "2.0" : ""));
-    var src = /remux/.test(s) ? "REMUX" : (/blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/webrip/.test(s) ? "WEBRip" : (/hdtv/.test(s) ? "HDTV" : (/dvdrip|dvd/.test(s) ? "DVD" : "")))));
-    var lang = /dual/.test(s) ? "Dual Audio" : (/multi|multi.audio/.test(s) ? "Multi Audio" : "");
-    return {
-      codec: codec,
-      depth: depth,
-      hdr: hdr,
-      audio: (audio + (ach ? " " + ach : "")).trim(),
-      src: src,
-      lang: lang
-    };
-  }
-
-  function parseSize(text) {
-    var m = String(text || "").match(/\[([\d.,]+\s*(?:TB|GB|MB))\]/i);
-    if (!m) m = String(text || "").match(/([\d.,]+\s*(?:TB|GB|MB))/i);
-    return m ? m[1] : "";
-  }
-
   function qualityFromText(text) {
     var t = String(text || "").toLowerCase();
     if (/2160|4k|uhd/.test(t)) return "2160p";
@@ -99,11 +74,6 @@
       .trim();
   }
 
-  function extractOgImage(html) {
-    var m = html.match(/<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']/i);
-    return m ? m[1] : null;
-  }
-
   function searchPosts(query) {
     var url = BASE_URL + "/?s=" + encodeURIComponent(query);
     return fetchText(url, { headers: { "User-Agent": UA } }).then(function (html) {
@@ -126,16 +96,11 @@
 
   function parseDownloadLinks(html) {
     var links = [];
-    var poster = extractOgImage(html);
+    var paragraphs = html.split(/(<p[^>]*style="text-align: center;"[^>]*>[\s\S]*?<\/p>)/gi);
     var lastQuality = "";
-    var lastSize = "";
 
-    var pRegex = /<p[^>]*style="text-align: center;"[^>]*>([\s\S]*?)<\/p>/gi;
-    var match;
-
-    while ((match = pRegex.exec(html)) !== null) {
-      var p = match[0];
-      var text = cleanText(p);
+    paragraphs.forEach(function (p) {
+      if (!p || p.indexOf("<p") !== 0) return;
 
       var hasDownload = p.indexOf("thenaukriadda.in") !== -1 || p.indexOf("maxbutton-download-g-drive") !== -1;
 
@@ -145,20 +110,16 @@
           links.push({
             url: urlMatch[1],
             quality: qualityFromText(lastQuality),
-            size: parseSize(lastQuality),
-            text: lastQuality,
-            poster: poster
+            text: cleanText(lastQuality)
           });
         }
-        lastQuality = "";
-        lastSize = "";
       } else {
+        var text = cleanText(p);
         if (text.length > 0) {
           lastQuality = text;
-          lastSize = parseSize(text);
         }
       }
-    }
+    });
 
     return links;
   }
@@ -228,40 +189,19 @@
       return searchPosts(query).then(function (posts) {
         var match = findBestMatch(posts, title, year);
         if (!match) {
-          console.log(tag + " Yil eşlesmesi bulunamadi, yıl olmayan arama deneniyor");
-          return searchPosts(title).then(function (posts2) {
-            return findBestMatch(posts2, title, "");
-          });
-        }
-        return match;
-      }).then(function (match) {
-        if (!match) {
-          console.log(tag + " Eşleşen yayin bulunamadi");
+          console.log(tag + " No matching post found");
           return [];
         }
-        console.log(tag + " Eslesen sayfa: " + match.title);
+        console.log(tag + " Matched post: " + match.title);
 
         return fetchText(match.url, { headers: { "User-Agent": UA } }).then(function (html) {
           var links = parseDownloadLinks(html);
           var streams = links.map(function (link) {
             var q = link.quality || "Auto";
-            var rel = parseRelease(link.text);
-            var size = link.size || "";
-            var namePart = [];
-            if (rel.src) namePart.push(rel.src);
-            if (rel.codec) namePart.push(rel.codec);
-            if (rel.depth) namePart.push(rel.depth);
-            if (rel.hdr) namePart.push(rel.hdr);
-            if (rel.audio) namePart.push(rel.audio);
-            if (rel.lang) namePart.push(rel.lang);
-            if (size) namePart.push(size);
-
-            var streamName = "UHDMovies";
-            if (namePart.length) streamName += " - " + namePart.join(" / ");
-
-            var stream = {
-              name: streamName,
-              title: display + "\n" + q + (namePart.length ? " | " + namePart.join(" / ") : ""),
+            var namePart = link.text ? (" - " + link.text) : "";
+            return {
+              name: "UHDMovies" + namePart,
+              title: display + "\n" + q + namePart,
               url: link.url,
               quality: q,
               isM3u8: false,
@@ -269,16 +209,14 @@
               subtitles: [],
               provider: "uhdmovies"
             };
-            if (link.poster) stream.image = link.poster;
-            return stream;
           });
           streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
-          console.log(tag + " Bulunan akış: " + streams.length);
+          console.log(tag + " Found " + streams.length + " streams");
           return streams;
         });
       });
     }).catch(function (err) {
-      console.log(tag + " Hata: " + (err && err.message));
+      console.log(tag + " Error: " + (err && err.message));
       return [];
     });
   }
