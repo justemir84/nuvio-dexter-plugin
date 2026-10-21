@@ -5,14 +5,14 @@
  * Hermes-safe: Promise chains only, no async/await, no deps.
  *
  * NOT: Bu site akış (streaming) sitesi degildir, indirme sitesidir.
- * Dondurulen linkler en.thenaukriadda.in üzerinden Google Drive'a yonlendirir.
- * Nuvio bu ara sayfalari direk video akisi olarak oynatamayabilir (buffering/takilma).
+ * Linkler en.thenaukriadda.in ara sayfasi uzerinden Google Drive'a yonlendirir.
+ * Bu provider ara sayfayi cozup final Google Drive linkini dondurmaya calisir.
  */
 (function () {
   "use strict";
 
   var BASE_URL = "https://uhdmovies.us.org";
-  var REQUEST_TIMEOUT = 15000;
+  var REQUEST_TIMEOUT = 20000;
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
   function fetchWithTimeout(url, options, timeout) {
@@ -74,6 +74,17 @@
       .trim();
   }
 
+  function parseSize(text) {
+    var m = String(text || "").match(/\[([\d.,]+\s*(?:TB|GB|MB))\]/i);
+    if (!m) m = String(text || "").match(/([\d.,]+\s*(?:TB|GB|MB))/i);
+    return m ? m[1] : "";
+  }
+
+  function extractOgImage(html) {
+    var m = html.match(/<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']/i);
+    return m ? m[1] : null;
+  }
+
   function searchPosts(query) {
     var url = BASE_URL + "/?s=" + encodeURIComponent(query);
     return fetchText(url, { headers: { "User-Agent": UA } }).then(function (html) {
@@ -94,13 +105,55 @@
     }).catch(function () { return []; });
   }
 
+  // thenaukriadda.in ara sayfasindan final Google Drive linkini cikarir
+  function resolveInterstitial(url) {
+    return fetchText(url, {
+      headers: { "User-Agent": UA, Referer: BASE_URL }
+    }).then(function (html) {
+      // 1) Meta refresh redirect
+      var m = html.match(/<meta[^>]+http-equiv=["\']refresh["\'][^>]+content=["\'][^"\']*;\s*url=([^"\']+)["\']/i);
+      if (m) return m[1];
+
+      // 2) JavaScript location.replace / location.href
+      m = html.match(/location\.(?:replace|href)\s*=\s*["\']([^"\']+)["\']/i);
+      if (m) return m[1];
+
+      // 3) window.location = ...
+      m = html.match(/window\.location\s*=\s*["\']([^"\']+)["\']/i);
+      if (m) return m[1];
+
+      // 4) Direkt Google Drive linki var mi?
+      m = html.match(/https:\/\/drive\.google\.com\/[^"'\s<>]+/i);
+      if (m) return m[0];
+
+      return null;
+    }).catch(function () {
+      return null;
+    });
+  }
+
+  // Google Drive dosya ID'sini direk indirme linkine cevirir
+  function gdriveDirectUrl(url) {
+    var m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return "https://drive.google.com/uc?export=download&id=" + m[1];
+    m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (m) return "https://drive.google.com/uc?export=download&id=" + m[1];
+    return url;
+  }
+
   function parseDownloadLinks(html) {
     var links = [];
-    var paragraphs = html.split(/(<p[^>]*style="text-align: center;"[^>]*>[\s\S]*?<\/p>)/gi);
+    var poster = extractOgImage(html);
     var lastQuality = "";
+    var lastSize = "";
 
-    paragraphs.forEach(function (p) {
-      if (!p || p.indexOf("<p") !== 0) return;
+    // Tum center-align paragraflarini sirada dolaş
+    var pRegex = /<p[^>]*style="text-align: center;"[^>]*>([\s\S]*?)<\/p>/gi;
+    var match;
+
+    while ((match = pRegex.exec(html)) !== null) {
+      var p = match[0];
+      var text = cleanText(p);
 
       var hasDownload = p.indexOf("thenaukriadda.in") !== -1 || p.indexOf("maxbutton-download-g-drive") !== -1;
 
@@ -110,16 +163,20 @@
           links.push({
             url: urlMatch[1],
             quality: qualityFromText(lastQuality),
-            text: cleanText(lastQuality)
+            size: lastSize,
+            text: lastQuality,
+            poster: poster
           });
         }
+        lastQuality = "";
+        lastSize = "";
       } else {
-        var text = cleanText(p);
         if (text.length > 0) {
           lastQuality = text;
+          lastSize = parseSize(text);
         }
       }
-    });
+    }
 
     return links;
   }
@@ -189,30 +246,65 @@
       return searchPosts(query).then(function (posts) {
         var match = findBestMatch(posts, title, year);
         if (!match) {
-          console.log(tag + " No matching post found");
+          console.log(tag + " Yil eşlesmesi bulunamadi, yıl olmayan arama deneniyor");
+          return searchPosts(title).then(function (posts2) {
+            return findBestMatch(posts2, title, "");
+          });
+        }
+        return match;
+      }).then(function (match) {
+        if (!match) {
+          console.log(tag + " Eşleşen yayin bulunamadi");
           return [];
         }
-        console.log(tag + " Matched post: " + match.title);
+        console.log(tag + " Eslesen sayfa: " + match.title);
 
         return fetchText(match.url, { headers: { "User-Agent": UA } }).then(function (html) {
           var links = parseDownloadLinks(html);
-          var streams = links.map(function (link) {
-            var q = link.quality || "Auto";
-            var namePart = link.text ? (" - " + link.text) : "";
-            return {
-              name: "UHDMovies" + namePart,
-              title: display + "\n" + q + namePart,
-              url: link.url,
-              quality: q,
-              isM3u8: false,
-              type: "direct",
-              subtitles: [],
-              provider: "uhdmovies"
-            };
+          var chain = Promise.resolve([]);
+
+          links.forEach(function (link) {
+            chain = chain.then(function (acc) {
+              // Ara sayfayi coz, final Google Drive linkini bul
+              return resolveInterstitial(link.url).then(function (finalUrl) {
+                var streamUrl = finalUrl || link.url;
+
+                // Google Drive ise direk download linkine cevir
+                if (/drive\.google\.com/i.test(streamUrl)) {
+                  streamUrl = gdriveDirectUrl(streamUrl);
+                }
+
+                var q = link.quality || "Auto";
+                var size = link.size || (" (" + q + ")");
+                var textPart = link.text ? (" - " + link.text) : "";
+
+                var stream = {
+                  name: "UHDMovies" + textPart,
+                  title: display + "\n" + q + (link.size ? " | " + link.size : "") + textPart,
+                  url: streamUrl,
+                  quality: q,
+                  isM3u8: false,
+                  type: "direct",
+                  subtitles: [],
+                  provider: "uhdmovies",
+                  headers: {
+                    "User-Agent": UA,
+                    "Referer": "https://drive.google.com/"
+                  }
+                };
+                if (link.poster) stream.image = link.poster;
+
+                acc.push(stream);
+                return acc;
+              });
+            });
           });
-          streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
-          console.log(tag + " Found " + streams.length + " streams");
-          return streams;
+
+          return chain.then(function (streams) {
+            streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+            console.log(tag + " Found " + streams.length + " streams");
+            return streams;
+          });
         });
       });
     }).catch(function (err) {
