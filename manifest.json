@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
   "version": "2.3.4",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, Streamo, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV ve 123Movies, VixSrc ve VidRock, 4KHDHub sağlayıcıları",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -103,26 +103,6 @@
       "hasSettings": false,
       "formats": [
         "m3u8"
-      ],
-      "contentLanguage": [
-        "en"
-      ]
-    },
-    {
-      "id": "streamo",
-      "name": "Streamo",
-      "version": "1.0.3",
-      "filename": "providers/streamo.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8",
-        "mp4",
-        "mkv"
       ],
       "contentLanguage": [
         "en"
