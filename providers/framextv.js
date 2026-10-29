@@ -63,6 +63,11 @@
     return 0.5;
   }
 
+  function isLowQuality(q) {
+    q = String(q || "").toLowerCase();
+    return /480|360|240|144/.test(q);
+  }
+
   function normQuality(v) {
     var s = String(v || "").toLowerCase();
     if (!s) return "Auto";
@@ -286,17 +291,21 @@
             var type = String(src.type || "").toLowerCase();
             var isHls = type === "hls" || /\.m3u8(\?|$)/i.test(src.url);
             var q = normQuality(src.quality);
+            if (isLowQuality(q)) return;
             var server = src.server || r.serverName || pid;
+            var isDirect = (src.skipProxy === true);
+            var directTag = isDirect ? " Direct" : "";
             out.push({
-              name: "FrameX - " + server + " " + q,
-              title: display + "\n" + server + " " + q + (isHls ? " [HLS]" : " [MP4]"),
+              name: "FrameX - " + server + " " + q + directTag,
+              title: display + "\n" + server + " " + q + (isHls ? " [HLS]" : " [MP4]") + directTag,
               url: src.url,
               quality: q,
               isM3u8: isHls,
               type: isHls ? "hls" : "mp4",
               headers: { "User-Agent": UA, "Referer": SITE + "/", "Origin": SITE },
               subtitles: r.subtitles,
-              provider: "framextv"
+              provider: "framextv",
+              direct: isDirect
             });
           });
           return out;
@@ -315,7 +324,11 @@
             collected.push(st);
           });
         });
-        collected.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
+        collected.sort(function (a, b) {
+          var dd = (b.direct ? 1 : 0) - (a.direct ? 1 : 0);
+          if (dd) return dd;
+          return qRank(b.quality) - qRank(a.quality);
+        });
         if (collected.length > MAX_STREAMS) collected = collected.slice(0, MAX_STREAMS);
 
         var enrichTasks = collected.map(function (st) {
