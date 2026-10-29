@@ -7,8 +7,24 @@
 (function () {
   "use strict";
 
-  // Site adresi degisirse sadece bu satiri guncelle.
-  var BASE = "https://new3.moviesdrive.beer";
+  // MoviesDrive alan adi sik degisiyor. Ilk calisan adres otomatik secilir.
+  var BASE = "https://new5.moviesdrive.beer";
+  var BASE_CANDIDATES = [
+    BASE,
+    "https://new1.moviesdrive.cyou",
+    "https://new4.moviesdrive.beer",
+    "https://new6.moviesdrive.beer",
+    "https://new7.moviesdrive.beer",
+    "https://new8.moviesdrive.beer",
+    "https://new9.moviesdrive.beer",
+    "https://new10.moviesdrive.beer",
+    "https://moviesdrives.bid",
+    "https://moviedrive.org",
+    "https://new3.moviesdrive.beer",
+    "https://new2.moviesdrive.beer",
+    "https://new1.moviesdrive.beer"
+  ];
+  var baseReady = false;
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TIMEOUT = 12000;
@@ -79,6 +95,56 @@
     }).then(function (res) {
       if (!res.ok) throw new Error("HTTP " + res.status + " " + url);
       return res.json();
+    });
+  }
+
+  // Yonlendirme sonrasi gercek adresi de dondurur (pixel/dl.php icin gerekli).
+  function fetchPage(url, referer) {
+    return fetchTimeout(url, { headers: headers(referer) }).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status + " " + url);
+      return res.text().then(function (text) {
+        return { text: text, url: res.url || url };
+      });
+    });
+  }
+
+  function originOf(url) {
+    var m = String(url || "").match(/^(https?:\/\/[^\/]+)/i);
+    return m ? m[1] : "";
+  }
+
+  // Alan adi degistiginde yonlendirmeyi takip edip BASE'i gunceller.
+  function resolveBase() {
+    if (baseReady) return Promise.resolve(BASE);
+
+    var chain = Promise.resolve(null);
+    BASE_CANDIDATES.forEach(function (candidate) {
+      chain = chain.then(function (found) {
+        if (found) return found;
+        var url = candidate + "/wp-json/wp/v2/posts?per_page=1&_fields=link";
+        return fetchTimeout(url, {
+          headers: headers(candidate + "/", "application/json, text/plain, */*")
+        }, 7000).then(function (res) {
+          return res.text().then(function (text) {
+            var data = null;
+            try { data = JSON.parse(text); } catch (e) { return null; }
+            if (!Array.isArray(data)) return null;
+            var link = data[0] && data[0].link;
+            var origin = originOf(res.url) || originOf(link) || candidate;
+            if (!origin) return null;
+            BASE = origin;
+            baseReady = true;
+            console.log("[MoviesDrive] Base " + BASE);
+            return BASE;
+          });
+        }).catch(function () { return null; });
+      });
+    });
+
+    return chain.then(function (found) {
+      if (found) return found;
+      console.log("[MoviesDrive] Base fallback " + BASE);
+      return BASE;
     });
   }
 
@@ -372,6 +438,8 @@
       if (m) fileName = stripTags(m[1]);
     }
     fileName = cleanFileName(fileName);
+    // pixel/dl.php ara sayfasinin basligi dosya adi degildir.
+    if (/^hubcloud\b/i.test(fileName) || /link generator/i.test(fileName)) fileName = "";
 
     return {
       size: size,
@@ -561,13 +629,20 @@
     return base ? base + url : url;
   }
 
+  // Eski postlarda mdrive archive yerine dogrudan HubCloud drive linki olabiliyor.
+  function isHubDriveUrl(url) {
+    if (!url) return false;
+    if (/\/drive\/admin|search-recover/i.test(url)) return false;
+    return /hubcloud[^\/]*\/drive\/[a-z0-9]+/i.test(url);
+  }
+
   function extractArchiveLinks(html) {
     var out = [];
     var re = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     var m;
     while ((m = re.exec(html)) !== null) {
       var url = decodeEntities(m[1]);
-      if (!/\/archive\/\d+/i.test(url)) continue;
+      if (!/\/archive\/\d+/i.test(url) && !isHubDriveUrl(url)) continue;
       var anchor = stripTags(m[2]);
       var context = lastLineBefore(html, m.index);
       out.push({ url: url, anchor: anchor, context: context, index: m.index });
@@ -680,8 +755,26 @@
 
   function isFinalFileUrl(url) {
     if (!url) return false;
-    if (/hubcloud|gamerxyt|gdflix/i.test(url)) return false;
+    if (/hubcloud|gamerxyt|gdflix|pixeldrain\.(?:com|dev)\/u\//i.test(url)) return false;
+    if (/video-downloads\.googleusercontent\.com|drive\.google\.com\/uc\?/i.test(url)) return true;
+    if (/pixeldrain\.(?:com|dev)\/api\/file\//i.test(url)) return true;
     return /r2\.cloudflarestorage\.com|\.r2\.dev|\.(mkv|mp4|m4v|webm)(\?|$)/i.test(url);
+  }
+
+  function decodeParam(url, name) {
+    var m = String(url || "").match(new RegExp("[?&]" + name + "=([^#]+)", "i"));
+    if (!m) return "";
+    try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+  }
+
+  // pixel.hubcloud -> cryptonewz/dl.php?link=... -> dogrudan video URL'i.
+  function finalFromUrl(url) {
+    var link = decodeParam(url, "link");
+    if (link && isFinalFileUrl(link)) return link;
+
+    var pm = String(url || "").match(/pixeldrain\.(?:com|dev)\/u\/([a-z0-9]+)/i);
+    if (pm) return "https://pixeldrain.dev/api/file/" + pm[1] + "?download";
+    return "";
   }
 
   function findFinalUrl(html) {
@@ -704,6 +797,9 @@
     var srcRe = /<source\b[^>]*\bsrc=["']([^"']+)["']/gi;
     while ((m = srcRe.exec(html)) !== null) candidates.push(decodeEntities(m[1]));
 
+    var gm = String(html || "").match(/https?:\/\/video-downloads\.googleusercontent\.com[^"'\s<>]*/i);
+    if (gm) candidates.push(decodeEntities(gm[0]));
+
     for (var i = 0; i < candidates.length; i++) {
       var url = absoluteUrl(candidates[i], BASE + "/");
       if (isFinalFileUrl(url)) return url;
@@ -720,12 +816,16 @@
       var href = hrefFromTag(tag);
       if (!href) continue;
       if (/\bid=["']fsl["']/i.test(tag)) return absoluteUrl(href, base);
+      if (/pixel\.hubcloud\.|cryptonewz\.online\/dl\.php|\/dl\.php\?link=/i.test(href)) {
+        return absoluteUrl(href, base);
+      }
       if (/\bid=["']download["']/i.test(tag)) fallback = href;
       else if (!fallback && /gamerxyt\.com\/hubcloud\.php|hubcloud\.php\?/i.test(href)) fallback = href;
+      else if (!fallback && /pixeldrain\.(?:com|dev)\/u\//i.test(href)) fallback = href;
     }
     if (fallback) return absoluteUrl(fallback, base);
 
-    var gm = String(html || "").match(/https?:\/\/[^"'\s<>]*(?:gamerxyt\.com\/hubcloud\.php|hubcloud\.php\?)[^"'\s<>]*/i);
+    var gm = String(html || "").match(/https?:\/\/[^"'\s<>]*(?:gamerxyt\.com\/hubcloud\.php|hubcloud\.php\?|pixel\.hubcloud\.[^"'\s<>]*)[^"'\s<>]*/i);
     return gm ? decodeEntities(gm[0]) : null;
   }
 
@@ -734,20 +834,28 @@
     var visited = {};
 
     function step(current, ref, inherited) {
-      if (!current || visited[current] || depth > 3) return Promise.resolve(null);
+      if (!current || visited[current] || depth > 4) return Promise.resolve(null);
       visited[current] = true;
       depth++;
-      return fetchText(current, ref).then(function (html) {
+
+      if (isFinalFileUrl(current)) {
+        return Promise.resolve({ url: current, file: inherited || null });
+      }
+      var direct = finalFromUrl(current);
+      if (direct) return Promise.resolve({ url: direct, file: inherited || null });
+
+      return fetchPage(current, ref).then(function (page) {
+        var html = page.text;
         var file = parseHubMeta(html);
         if (inherited) {
           if (!file.size) file.size = inherited.size;
           if (!file.fileName) file.fileName = inherited.fileName;
           if (!file.meta) file.meta = inherited.meta;
         }
-        var finalUrl = findFinalUrl(html);
+        var finalUrl = findFinalUrl(html) || finalFromUrl(page.url);
         if (finalUrl) return { url: finalUrl, file: file };
-        var next = findNavUrl(html, current);
-        if (next && next !== current) return step(next, current, file);
+        var next = findNavUrl(html, page.url || current);
+        if (next && next !== current) return step(next, page.url || current, file);
         return null;
       });
     }
@@ -863,7 +971,7 @@
 
   function resolveMovieCandidate(info, cand) {
     return fetchText(cand.url, BASE + "/").then(function (page) {
-      var hub = findHubcloud(page);
+      var hub = isHubDriveUrl(cand.url) ? cand.url : findHubcloud(page);
       if (!hub) {
         console.log("[MoviesDrive] No HubCloud link (" + cand.meta.quality + ")");
         return null;
@@ -883,7 +991,7 @@
 
   function resolveDirectTv(info, group, season, episode) {
     return fetchText(group.url, BASE + "/").then(function (page) {
-      var hub = findHubcloud(page);
+      var hub = isHubDriveUrl(group.url) ? group.url : findHubcloud(page);
       if (!hub) {
         console.log("[MoviesDrive] No HubCloud link (" + group.meta.quality + ")");
         return null;
@@ -972,7 +1080,8 @@
     console.log("[MoviesDrive] Fetching " + type + " " + tmdbId +
       (type === "tv" ? " S" + season + "E" + episode : ""));
 
-    return tmdbLookup(tmdbId, type).then(function (info) {
+    return Promise.all([resolveBase(), tmdbLookup(tmdbId, type)]).then(function (results) {
+      var info = results[1];
       info.mediaType = type;
       if (!info.title) throw new Error("TMDB title missing");
       return findPost(info, type, season).then(function (post) {
