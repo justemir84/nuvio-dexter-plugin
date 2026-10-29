@@ -205,7 +205,7 @@
     {
       "id": "vidbolt",
       "name": "VidBolt",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "1080p HLS; HLS içinde 10 dilde ses + 5 altyazı",
       "filename": "providers/vidbolt.js",
       "supportedTypes": [
