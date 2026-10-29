@@ -283,7 +283,7 @@
     {
       "id": "vidrock",
       "name": "VidRock",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "9 sunucu (Luna/Orion/…); 1080p'ye kadar HLS",
       "filename": "providers/vidrock.js",
       "supportedTypes": [
