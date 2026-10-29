@@ -32,8 +32,10 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | VixSrc | Film + Dizi | HLS | İtalyanca/İngilizce çift ses; çok dilli VTT altyazı |
 | VidRock | Film + Dizi | HLS | Luna/Orion dahil birden fazla sunucu; 1080p’ye kadar |
 | 4KHDHub | Film + Dizi | HLS / MP4 | 4K/UHD film ve dizi kaynakları |
+| 4KHD Club | Film + Dizi | MKV | 4K REMUX arşivi; MKV indirme bağlantıları |
 | MoviesDrive | Film + Dizi | MKV / MP4 | HubCloud üzerinden R2 doğrudan bağlantıları; Hintçe ve İngilizce |
 | UHDMovies | Film + Dizi | MP4 / MKV | TMDB başlığı/yılı ile arama; Google Drive bağlantıları, 2160p’ye kadar. İsteğe bağlı kişisel TMDB anahtarı provider ayarlarından girilebilir. |
+| Febbox | Film + Dizi | MP4 / MKV | Febbox / SuperStream kaynakları; token gerekir |
 
 ## Kaynak listesi ve oynatma
 

@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.7",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, Febbox sağlayıcıları",
+  "version": "2.3.8",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, Febbox sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -318,6 +318,25 @@
       "contentLanguage": [
         "en",
         "hi"
+      ]
+    },
+    {
+      "id": "4khdclub",
+      "name": "4KHD Club",
+      "version": "1.0.0",
+      "description": "4K-HD.Club arşivi; 4K REMUX (MKV) indirme bağlantıları. Film + dizi.",
+      "filename": "providers/4khdclub.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "mkv"
+      ],
+      "contentLanguage": [
+        "en"
       ]
     },
     {
