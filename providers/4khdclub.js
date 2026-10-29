@@ -197,7 +197,25 @@
       return "4k-hd.club";
     }
   }
-
+  function uniqueAudioFormats(audioSection) {
+    var set = {};
+    var out = [];
+    var parts = String(audioSection || "").split("|");
+    parts.forEach(function (p) {
+      p = p.trim();
+      if (!p) return;
+      // "#English: DTS-HD Master Audio 5.1 (48kHz, 24-bit)" -> format
+      var m = p.match(/:\s*(.+?)(?:\s*\(|$)/);
+      var fmt = m ? m[1].trim() : p;
+      fmt = fmt.replace(/^#+/, "").trim();
+      if (!fmt) return;
+      if (!Object.prototype.hasOwnProperty.call(set, fmt)) {
+        set[fmt] = true;
+        out.push(fmt);
+      }
+    });
+    return out;
+  }
   async function getStreams(tmdbId, mediaType, season, episode, settings) {
     var tag = "[4khdclub]";
     var isTv = mediaType === "tv" || mediaType === "series";
@@ -257,6 +275,26 @@
     var ogMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
     var poster = ogMatch ? decodeEntities(ogMatch[1]) : null;
 
+    var videoSection = (function(html,title){ var re = new RegExp('<div class="stb-sp-title">\\s*' + title + '\\s*</div>\\s*<div class="stb-sp-content">([\\s\\S]*?)</div>', "i"); var m = String(html||"").match(re); if(!m) return "NOMATCH"; return m[1].replace(/<br\s*\/?>/gi," | ").replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim(); })(html, "Video");
+    var audioSection = (function(html,title){ var re = new RegExp('<div class="stb-sp-title">\\s*' + title + '\\s*</div>\\s*<div class="stb-sp-content">([\\s\\S]*?)</div>', "i"); var m = String(html||"").match(re); if(!m) return ""; return m[1].replace(/<br\s*\/?>/gi," | ").replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim(); })(html, "Audio");
+    var subsSection = (function(html,title){ var re = new RegExp('<div class="stb-sp-title">\\s*' + title + '\\s*</div>\\s*<div class="stb-sp-content">([\\s\\S]*?)</div>', "i"); var m = String(html||"").match(re); if(!m) return ""; return m[1].replace(/<br\s*\/?>/gi," | ").replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim(); })(html, "Subtitles");
+
+    var audioFormats = uniqueAudioFormats(audioSection);
+    var bitrateMatch = videoSection.match(/\(([^)]*Mb\/s[^)]*)\)/i);
+    var bitrate = bitrateMatch ? bitrateMatch[1].trim() : "";
+    var hdrMatch = videoSection.match(/HDR:\s*([^|]+)/i);
+    var hdr = hdrMatch ? hdrMatch[1].trim() : "";
+    var codecMatch = videoSection.match(/Codec:\s*([^(|]+)/i);
+    var codec = codecMatch ? codecMatch[1].trim() : "";
+
+    var detailLines = [];
+    if (codec) detailLines.push("Video: " + codec + (bitrate ? " (" + bitrate + ")" : "") + (hdr ? " | HDR: " + hdr : ""));
+    if (audioFormats.length) detailLines.push("Audio: " + audioFormats.join(", "));
+    if (subsSection) {
+      var subCount = subsSection.split(",").filter(function (x) { return x.trim(); }).length;
+      detailLines.push("Subs: " + subCount + " langs");
+    }
+
     var streams = [];
     var seen = {};
     links.forEach(function (link) {
@@ -265,12 +303,14 @@
 
       var q = qualityFromUrl(link);
       var host = hostName(link);
-      var name = "4KHD Club - " + host + (q ? " " + q : "");
+      var name = "4KHD Club - " + host + (q ? " " + q : "") + (bitrate ? " (" + bitrate + ")" : "");
       var titleLine = pageTitle + (q ? "\n" + q : "") + (size ? " | " + size : "");
+      if (detailLines.length) titleLine += "\n" + detailLines.join("\n");
 
       var stream = {
         name: name,
         title: titleLine,
+        description: detailLines.join(" | "),
         url: link,
         quality: q,
         isM3u8: false,
