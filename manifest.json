@@ -401,8 +401,8 @@
     {
       "id": "framextv",
       "name": "FrameX TV",
-      "version": "1.1.0",
-      "description": "FrameX TV API; çoklu provider (mp4 + hls), codec/bitrate/boyut zenginleştirme, çok dilli VTT altyazı",
+      "version": "1.2.0",
+      "description": "FrameX TV API; direct kaynaklar önce, düşük çözünürlükler filtreli, codec/bitrate/boyut zenginleştirme, çok dilli VTT altyazı",
       "filename": "providers/framextv.js",
       "supportedTypes": [
         "movie",
@@ -413,6 +413,9 @@
       "formats": [
         "mp4",
         "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
       ]
     }
   ]
