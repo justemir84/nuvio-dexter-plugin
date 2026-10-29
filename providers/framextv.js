@@ -84,6 +84,101 @@
     return "Auto";
   }
 
+  function qualityFromHeight(h) {
+    if (h >= 2160) return "4K";
+    if (h >= 1440) return "1440p";
+    if (h >= 1080) return "1080p";
+    if (h >= 720) return "720p";
+    if (h >= 480) return "480p";
+    if (h > 0) return "360p";
+    return "Auto";
+  }
+
+  function codecTag(cds, rng) {
+    cds = String(cds || "").toLowerCase();
+    var dv = /dvh[1e]|dvhe|dav1/.test(cds) ? "DV" : "";
+    var v = dv ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : (/vp9/.test(cds) ? "VP9" : ""))));
+    var hdr = !dv && /^(PQ|HLG)$/i.test(String(rng || "")) ? "HDR" : "";
+    var a = /ec-3|eac3/.test(cds) ? "DDP" : (/ac-3/.test(cds) ? "DD" : (/mp4a|aac/.test(cds) ? "AAC" : ""));
+    return { v: v, dv: dv, hdr: hdr, a: a, tag: [v, dv || hdr, a].filter(function (x) { return !!x; }).join(" ") };
+  }
+
+  function fmtSize(b) {
+    b = Number(b) || 0;
+    if (b >= 1073741824) return (b / 1073741824).toFixed(2) + " GB";
+    if (b >= 1048576) return (b / 1048576).toFixed(1) + " MB";
+    if (b > 0) return b + " B";
+    return "";
+  }
+
+  function parseHls(text) {
+    text = String(text || "");
+    if (text.indexOf("#EXTM3U") !== 0) return null;
+    var lines = text.split(/\r?\n/);
+    var maxBw = 0, maxH = 0, bestLine = "", curLine = "", i;
+    for (i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
+        curLine = line;
+      } else if (line && line.charAt(0) !== "#" && curLine) {
+        var bm = curLine.match(/BANDWIDTH=(\d+)/);
+        var bw = bm ? parseInt(bm[1], 10) : 0;
+        var rm = curLine.match(/RESOLUTION=\d+x(\d+)/);
+        var h = rm ? parseInt(rm[1], 10) : 0;
+        if (bw >= maxBw) { maxBw = bw; if (h > maxH) maxH = h; bestLine = curLine; }
+        curLine = "";
+      }
+    }
+    var cds = (bestLine.match(/CODECS="([^"]+)"/i) || [])[1] || "";
+    var rng = (bestLine.match(/VIDEO-RANGE=([A-Z0-9]+)/i) || [])[1] || "";
+    var ct = codecTag(cds, rng);
+    return { bw: maxBw, h: maxH, codec: ct };
+  }
+
+  function enrichHls(stream) {
+    var timerPromise = new Promise(function (resolve) { setTimeout(function () { resolve(stream); }, 3000); });
+    var work = fetchTimeout(stream.url, {
+      headers: stream.headers || { "User-Agent": UA }
+    }, 2500).then(function (r) { return r.ok ? r.text() : ""; }, function () { return ""; }).then(function (txt) {
+      var info = parseHls(txt);
+      if (!info) return stream;
+      var parts = [];
+      if (info.codec && info.codec.tag) parts.push(info.codec.tag);
+      if (info.bw > 0) parts.push((info.bw / 1e6).toFixed(1) + " Mbps");
+      if (info.codec && info.codec.dv) parts.push("Dolby Vision");
+      if (info.codec && info.codec.hdr && info.codec.hdr !== "HDR") parts.push(info.codec.hdr);
+      if (parts.length) {
+        stream.title = stream.title + " [" + parts.join(" | ") + "]";
+        stream.name = stream.name + " " + parts.join(" ");
+      }
+      if (stream.quality === "Auto" && info.h > 0) stream.quality = qualityFromHeight(info.h);
+      return stream;
+    }).catch(function () { return stream; });
+    return Promise.race([work, timerPromise]);
+  }
+
+  function enrichMp4(stream) {
+    var timerPromise = new Promise(function (resolve) { setTimeout(function () { resolve(stream); }, 3000); });
+    var work = fetchTimeout(stream.url, {
+      method: "HEAD",
+      headers: stream.headers || { "User-Agent": UA }
+    }, 2500).then(function (r) {
+      if (!r) return stream;
+      var len = 0;
+      try { len = parseInt(r.headers.get ? r.headers.get("content-length") : (r.headers["content-length"] || "0"), 10); } catch (e) { len = 0; }
+      if (len > 0) {
+        var sz = fmtSize(len);
+        if (sz) {
+          stream.title = stream.title + " [" + sz + "]";
+          stream.name = stream.name + " " + sz;
+          stream.size = sz;
+        }
+      }
+      return stream;
+    }, function () { return stream; }).catch(function () { return stream; });
+    return Promise.race([work, timerPromise]);
+  }
+
   function tmdbLookup(tmdbId, isTv) {
     var path = isTv ? "/tv/" : "/movie/";
     return fetchTimeout("https://api.themoviedb.org/3" + path + tmdbId + "?api_key=" + TMDB_KEY + "&language=en-US", {
@@ -222,8 +317,19 @@
         });
         collected.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
         if (collected.length > MAX_STREAMS) collected = collected.slice(0, MAX_STREAMS);
-        console.log(tag + " Found " + collected.length + " streams");
-        return collected;
+
+        var enrichTasks = collected.map(function (st) {
+          if (st.type === "hls") return enrichHls(st);
+          return enrichMp4(st);
+        });
+        return pAll(enrichTasks).then(function (res) {
+          var out = collected.slice();
+          res.forEach(function (r, i) {
+            if (r && r.ok && r.v) out[i] = r.v;
+          });
+          console.log(tag + " Found " + out.length + " streams");
+          return out;
+        });
       });
     }).catch(function (err) {
       console.log(tag + " Error: " + (err && err.message));

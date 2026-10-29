@@ -35,7 +35,7 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | MoviesDrive | Film + Dizi | MKV / MP4 | HubCloud üzerinden R2 doğrudan bağlantıları; Hintçe ve İngilizce |
 | UHDMovies | Film + Dizi | MP4 / MKV | TMDB başlığı/yılı ile arama; Google Drive bağlantıları, 2160p’ye kadar. İsteğe bağlı kişisel TMDB anahtarı provider ayarlarından girilebilir. |
 | Febbox | Film + Dizi | MP4 / MKV | Febbox / SuperStream kaynakları; token gerekir |
-| FrameX TV | Film + Dizi | MP4 / HLS | Çoklu provider; çok dilli VTT altyazı |
+| FrameX TV | Film + Dizi | MP4 / HLS | Çoklu provider; codec, bitrate ve dosya boyutu zenginleştirme; çok dilli VTT altyazı |
 
 ## Kaynak listesi ve oynatma
 
