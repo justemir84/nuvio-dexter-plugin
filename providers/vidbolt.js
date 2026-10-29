@@ -4,8 +4,10 @@
  *   -> stream.sources[] -> HLS master (1080p/720p/480p + coklu ses + altyazi)
  *   -> medya istekleri Referer: https://vidbolt.xyz/ ile cekilir.
  * Sunucular: orion (img.rousav.tech), quantum/vega (proxy.vidbolt.xyz),
- *   callisto (dash-hls-bridge workers -> sacdn h265). Yedekli: bos donerse
- *   sirasiyla quantum -> vega -> callisto -> fastva denenir.
+ *   callisto (dash-hls-bridge workers -> sacdn h265). Tum sunucular paralel
+ *   denenir; sonuclar tek listede birlestirilir (bos/erisilemez sunucu varsa
+ *   digerleri yine gorunur). Yedekli: bos donerse sirasiyla quantum -> vega ->
+ *   callisto -> fastva denenir.
  * Kaynak dili: callisto kaynaklari "language" alanini doner; orion tek master
  *   icinde EXT-X-MEDIA ile coklu ses/altyazi tasir, gercek dil listesi baslığa
  *   yazilir. Orijinal/Ingilizce kaynak kosulsuz ilk sirada gosterilir; "mirror"
@@ -21,7 +23,7 @@
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var TIMEOUT = 12000;
-  var MAX_STREAMS = 3;
+  var MAX_STREAMS = 12;
   var PREFERS = ["quantum", "vega", "callisto", "orion", "fastva"];
 
   function fetchTimeout(url, options, timeout) {
@@ -93,6 +95,12 @@
     return /english|original/i.test(String(s || ""));
   }
 
+  function englishRank(en) {
+    if (isEnglish(en.lang)) return 0;
+    if (en.lang === "Multi" && (en.audio || []).some(function (a) { return isEnglish(a); })) return 0;
+    return 1;
+  }
+
   function tmdbLookup(tmdbId, isTv) {
     var path = isTv ? "/tv/" : "/movie/";
     return fetchTimeout("https://api.themoviedb.org/3" + path + tmdbId + "?api_key=" + TMDB_KEY + "&language=en-US", {
@@ -108,12 +116,12 @@
     var qs = "type=" + (isTv ? "tv" : "movie") + "&id=" + tmdbId + (isTv ? "&season=" + s + "&episode=" + e : "");
     var display = "";
 
-    return pAll([
-      resolve(qs),
-      tmdbLookup(tmdbId, isTv)
-    ]).then(function (results) {
-      var boot = (results[0] && results[0].ok) ? results[0].v : null;
-      var info = (results[1] && results[1].ok) ? results[1].v : null;
+    // Varsayilan resolve + tum prefer sunuculari paralel denenir.
+    var tasks = [resolve(qs)].concat(PREFERS.map(function (p) { return resolve(qs + "&prefer=" + p); }));
+    tasks.push(tmdbLookup(tmdbId, isTv));
+
+    return pAll(tasks).then(function (results) {
+      var info = (results[results.length - 1] && results[results.length - 1].ok) ? results[results.length - 1].v : null;
       if (info) {
         display = info.title || info.name || "";
         var y = String(info.release_date || info.first_air_date || "").slice(0, 4);
@@ -122,42 +130,52 @@
       if (!display) display = "TMDB " + tmdbId;
       if (isTv) display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
 
-      var found = sourcesOf(boot);
-      if (found.length) return { sources: found, server: ((boot || {}).stream || {}).server || "" };
+      var collected = [];
+      var seen = {};
+      // Son eleman tmdb sonucu; digerleri resolve sonuclari.
+      for (var i = 0; i < results.length - 1; i++) {
+        var r = results[i];
+        if (!r || !r.ok) continue;
+        var j = r.v;
+        var fs = sourcesOf(j);
+        var srv = ((j || {}).stream || {}).server || (i === 0 ? "" : PREFERS[i - 1]);
+        if (!srv) srv = i === 0 ? "orion" : PREFERS[i - 1];
+        fs.forEach(function (x) {
+          if (!x || !x.url || seen[x.url]) return;
+          seen[x.url] = true;
+          x._server = srv;
+          collected.push(x);
+        });
+      }
 
-      return pAll(PREFERS.map(function (p) { return resolve(qs + "&prefer=" + p); })).then(function (rs) {
-        for (var i = 0; i < rs.length; i++) {
-          var j = (rs[i] && rs[i].ok) ? rs[i].v : null;
-          var fs = sourcesOf(j);
-          if (fs.length) return { sources: fs, server: ((j || {}).stream || {}).server || PREFERS[i] };
-        }
-        return { sources: [], server: "" };
-      });
-    }).then(function (res) {
-      var found = (res && res.sources) || [];
-      var server = (res && res.server) || "";
-      var entries = found.map(function (x, i) {
+      if (!collected.length) return [];
+
+      var entries = collected.map(function (x, i) {
         var q = String(x.quality || x.name || "").trim() || "Auto";
         var kind = String(x.kind || "hls").toLowerCase();
         var lang = String(x.language || "").trim();
         var mi = mediaInfoFromMaster(x.master || "");
         if (!lang && mi.audio.length === 1) lang = mi.audio[0];
-        return { x: x, i: i, q: q, kind: kind, lang: lang, audio: mi.audio, subs: mi.subs };
+        if (!lang && mi.audio.length > 1) lang = "Multi";
+        return { x: x, i: i, q: q, kind: kind, lang: lang, audio: mi.audio, subs: mi.subs, server: x._server };
       });
+
       // Orijinal/Ingilizce kaynak kosulsuz ilk sirada (kaliteden bagimsiz);
       // sonra kalite, sonra kaynak sirasi. Ilk satir her zaman orijinal olsun.
       entries.sort(function (a, b) {
-        var ea = isEnglish(a.lang) ? 0 : 1;
-        var eb = isEnglish(b.lang) ? 0 : 1;
+        var ea = englishRank(a);
+        var eb = englishRank(b);
         if (ea !== eb) return ea - eb;
         var d = qRank(b.q) - qRank(a.q);
         if (d) return d;
         return a.i - b.i;
       });
+
       var seenNames = {};
       var out = entries.slice(0, MAX_STREAMS).map(function (en) {
         var label = en.q === "Auto" ? "Auto" : en.q;
-        var name = "VidBolt - " + (en.lang ? en.lang + " " : "") + label;
+        var srvName = en.server ? (en.server.charAt(0).toUpperCase() + en.server.slice(1)) : "";
+        var name = "VidBolt - " + (srvName ? srvName + " " : "") + (en.lang ? en.lang + " " : "") + label;
         if (seenNames[name]) { seenNames[name]++; name = name + " (" + seenNames[name] + ")"; }
         else seenNames[name] = 1;
         var meta = [];
@@ -167,7 +185,7 @@
         return {
           name: name,
           title: display + "\n" + label + (en.lang ? " " + en.lang : "") +
-            " [" + (en.kind === "mp4" ? "MP4" : "HLS") + (server ? " · " + server : "") + "]" +
+            " [" + (en.kind === "mp4" ? "MP4" : "HLS") + (en.server ? " · " + en.server : "") + "]" +
             (meta.length ? " | " + meta.join(" | ") : ""),
           url: en.x.url,
           quality: en.q,
