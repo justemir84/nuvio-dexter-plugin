@@ -15,7 +15,7 @@
   "use strict";
 
   // Domain değişirse SADECE bu satırı değiştir — dosyanın geri kalanı otomatik uyum sağlar.
-  var SITE_DOMAIN = "kmmovies.cam";
+  var SITE_DOMAIN = "kmmovies.autos";
   var BASE = "https://" + SITE_DOMAIN;
   var SITE_RE = SITE_DOMAIN.replace(/\./g, "\\.");
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
