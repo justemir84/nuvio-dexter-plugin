@@ -13,10 +13,10 @@
   var SITE = "https://vidrock.net";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
-  var TIMEOUT = 12000;
+  var TIMEOUT = 15000;
   var MAX_STREAMS = 10;
   var AES_KEY_HEX = "7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f";
-  var MEDIA_HEADERS = { "Referer": SITE + "/", "Origin": SITE, "User-Agent": UA };
+  var MEDIA_HEADERS = { "Referer": SITE + "/", "Origin": SITE, "User-Agent": UA, "Accept": "*/*" };
 
   /* ---- saf JS AES-256 (GCM/CTR cozum icin yalniz sifreleme yonu) ---- */
   var SBOX = [
@@ -296,7 +296,7 @@
     var display = "";
 
     return pAll([
-      fetchTimeout(apiUrl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: SITE + "/" } })
+      fetchTimeout(apiUrl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: SITE + "/", "Origin": SITE } })
         .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
       tmdbLookup(tmdbId, isTv)
     ]).then(function (res) {
