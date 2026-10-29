@@ -473,8 +473,10 @@
     return /x265|hevc|h265|h\.265/.test(s) ? "HEVC" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : "");
   }
 
-  function makeStream(title, quality, url, via, size, label) {
+  function makeStream(title, quality, url, via, size, label, referer) {
     var ctag = codecFromLabel(label);
+    var h = { "User-Agent": UA };
+    if (referer) h["Referer"] = referer;
     return {
       name: "KMMovies - " + quality + (ctag ? " " + ctag : "") + " (" + via + ")",
       title: title + (size ? " | " + size : "") + (ctag ? " | " + ctag : ""),
@@ -482,7 +484,9 @@
       quality: quality,
       isM3u8: false,
       provider: "kmmovies",
-      type: "direct"
+      type: "direct",
+      headers: h,
+      subtitles: []
     };
   }
 
@@ -561,7 +565,7 @@
             return resolveEpisode(pg.url, wantE, ctx.detailUrl).then(function (got) {
               console.log(tag + " ep " + pg.quality + " -> " + (got && got.url ? "ok" : "fail"));
               if (got && got.url) {
-                acc.push(makeStream(display, pg.quality, got.url, got.via || "Skydrop", "", pg.label));
+                acc.push(makeStream(display, pg.quality, got.url, got.via || "Skydrop", "", pg.label, ctx.detailUrl));
               }
               return acc;
             });
@@ -588,7 +592,7 @@
           var packDisplay = display + " Pack";
           return resolveW3List(packs, ctx.detailUrl, 4, true).then(function (found) {
             var streams2 = qSort(found.map(function (f) {
-              return makeStream(packDisplay, f.quality, f.url, f.via, f.size, f.label);
+              return makeStream(packDisplay, f.quality, f.url, f.via, f.size, f.label, ctx.detailUrl);
             })).slice(0, 10);
             console.log(tag + " Found " + streams2.length + " streams (pack)");
             return streams2;
@@ -606,7 +610,7 @@
       return resolveW3List(parsed.w3, ctx.detailUrl, MAX_W3).then(function (found) {
         var display = displayBase;
         var streams = qSort(found.map(function (f) {
-          return makeStream(display, f.quality, f.url, f.via, f.size, f.label);
+          return makeStream(display, f.quality, f.url, f.via, f.size, f.label, ctx.detailUrl);
         })).slice(0, 10);
         console.log(tag + " Found " + streams.length + " streams");
         return streams;
