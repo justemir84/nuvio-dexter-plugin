@@ -129,8 +129,8 @@
     {
       "id": "moviesapi",
       "name": "MoviesAPI",
-      "version": "1.0.2",
-      "description": "VidSpark backend; film + dizi, çok dilli VTT altyazı",
+      "version": "1.0.3",
+      "description": "VidSpark backend; film + dizi, TMDB/IMDB fallback, çok dilli VTT altyazı",
       "filename": "providers/moviesapi.js",
       "supportedTypes": [
         "movie",
