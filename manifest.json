@@ -74,7 +74,7 @@
     {
       "id": "mapple",
       "name": "Mapple",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "description": "Çok sunuculu HLS; PoW oturum doğrulama; mobil UA ile Cloudflare uyumlu",
       "filename": "providers/mapple.js",
       "supportedTypes": [
@@ -363,7 +363,7 @@
     {
       "id": "uhdmovies",
       "name": "UHDMovies",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "description": "UHDMovies.us.org; thenaukriadda/driveseed zincirini çözüp doğrudan Google video (MKV) linki verir. Film + dizi.",
       "filename": "providers/uhdmovies.js",
       "supportedTypes": [
