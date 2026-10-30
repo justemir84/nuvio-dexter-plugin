@@ -544,44 +544,54 @@
     return null;
   }
 
-  function resolveVideoGen(link, jar, referer) {
+  function resolveVideoGen(link, jar, referer, depth) {
+    depth = depth || 0;
+    if (depth > 6) return Promise.resolve(null);
     var abs = absoluteUrl(link, referer);
     if (!abs) return Promise.resolve(null);
 
-    // Mobil/TV (QuickJS) bazi ortamlarda redirect:"manual" desteklenmez.
-    // Once normal (auto-follow) fetch dene; Location header varsa onu kullan,
-    // yoksa son URL'den (res.url) dogrudan linki cikar.
-    return fetchWithTimeout(abs, {
-      headers: buildHeaders(jar, referer)
-    }).then(function (res) {
+    // Mobil/TV (QuickJS) ortamlarinda redirect:"manual" desteklenmeyebilir;
+    // bu yuzden normal fetch ile basla, Location header veya body uzerinden
+    // yonlendirmeleri kendimiz takip et.
+    return fetchWithTimeout(abs, { headers: buildHeaders(jar, referer) }).then(function (res) {
       if (jar) jar.store(res);
 
       var loc = null;
       try { loc = res.headers.get("location") || res.headers.get("Location"); } catch (e) {}
 
       if (loc) {
-        var direct = extractDirectFromWrapper(absoluteUrl(loc, abs));
-        if (direct) return direct;
+        var locAbs = absoluteUrl(loc, abs);
+        var d1 = extractDirectFromWrapper(locAbs);
+        if (d1) return d1;
+        return resolveVideoGen(locAbs, jar, abs, depth + 1);
       }
 
       var followed = (res && res.url) ? res.url : abs;
-      var direct2 = extractDirectFromWrapper(followed);
-      if (direct2) return direct2;
+      var d2 = extractDirectFromWrapper(followed);
+      if (d2) return d2;
 
-      // Son sans: normal GET ile son URL'yi yakala.
-      return httpGet(abs, jar, referer).then(function (r) {
-        var u = (r && r.url) ? r.url : abs;
-        var direct = extractDirectFromWrapper(u);
-        if (direct) return direct;
-        var href = firstHref(r.text, /href=["']([^"']*(?:workers\.dev|googleusercontent\.com|\.mkv|\.mp4)[^"']*)["']/i);
-        if (href) return absoluteUrl(href, r.url || abs);
-        var next = jsRedirect(r.text) || metaRefresh(r.text);
-        if (next) return extractDirectFromWrapper(absoluteUrl(next, r.url || abs));
+      // Body oku ve icindeki dogrudan link / redirect / meta refresh'i tara.
+      return res.text().then(function (text) {
+        var href = firstHref(text, /href=["']([^"']*(?:workers\.dev|googleusercontent\.com|\.mkv|\.mp4)[^"']*)["']/i);
+        if (href) {
+          var hAbs = absoluteUrl(href, followed);
+          var d3 = extractDirectFromWrapper(hAbs);
+          if (d3) return d3;
+          return resolveVideoGen(hAbs, jar, followed, depth + 1);
+        }
+        var next = jsRedirect(text) || metaRefresh(text);
+        if (next) {
+          var nAbs = absoluteUrl(next, followed);
+          var d4 = extractDirectFromWrapper(nAbs);
+          if (d4) return d4;
+          return resolveVideoGen(nAbs, jar, followed, depth + 1);
+        }
         return null;
       }, function () {
         return null;
       });
     }, function () {
+      // fetch tamamen basarisizsa httpGet ile tekrar dene.
       return httpGet(abs, jar, referer).then(function (r) {
         var u = (r && r.url) ? r.url : abs;
         var direct = extractDirectFromWrapper(u);
@@ -589,7 +599,7 @@
         var href = firstHref(r.text, /href=["']([^"']*(?:workers\.dev|googleusercontent\.com|\.mkv|\.mp4)[^"']*)["']/i);
         if (href) return absoluteUrl(href, r.url || abs);
         var next = jsRedirect(r.text) || metaRefresh(r.text);
-        if (next) return extractDirectFromWrapper(absoluteUrl(next, r.url || abs));
+        if (next) return resolveVideoGen(absoluteUrl(next, r.url || abs), jar, r.url || abs, depth + 1);
         return null;
       }, function () {
         return null;
@@ -691,6 +701,11 @@
     return flow.then(function (directUrl) {
       if (!directUrl || !/^https?:\/\//i.test(directUrl)) {
         console.log("[uhdmovies] Cozulemedi: " + (link.quality || "Auto") + " " + (link.size || ""));
+        return null;
+      }
+      // Yarı çözülmüş (wrapper) linkleri ele; player'da buffering yapar.
+      if (/video-seed|video-gen\.xyz|driveseed|driveleech|thenaukriadda/i.test(directUrl)) {
+        console.log("[uhdmovies] Yarı cozulmus link elendi: " + directUrl.slice(0, 80));
         return null;
       }
       console.log("[uhdmovies] OK: " + (link.quality || "Auto") + " " + (link.size || ""));
