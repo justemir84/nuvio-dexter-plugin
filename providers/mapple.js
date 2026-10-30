@@ -1,6 +1,6 @@
 /**
  * mapple - Mapple provider for Nuvio
- * Flow: TMDB -> request-token -> media-session (+PoW) -> per-hoster encrypt -> HLS master -> variants
+ * Flow: TMDB -> ui/session -> media-session (+PoW) -> per-hoster encrypt -> HLS master -> variants
  * Subs: Stremio OpenSubtitles v3 (via IMDb id)
  * Hermes-safe: Promise chains only, no deps (embedded SHA256).
  */
@@ -12,23 +12,30 @@
   var TMDB_BASE = "https://api.themoviedb.org/3";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   // Site/API (mapple.fun) rejects Android UA with Cloudflare 403 -> desktop UA.
-  var WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  var WEB_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36";
   // Playlist proxy rejects desktop/Node TLS with 403 -> Android/ExoPlayer style UA.
   var PLAY_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
   var TIMEOUT = 15000;
 
   var HOSTERS = [
-    { name: "Poseidon", key: "s25" },
-    { name: "Prometheus", key: "s10" },
     { name: "Zeus", key: "mapple" },
+    { name: "Poseidon", key: "s25" },
     { name: "Athena", key: "s2" },
-    { name: "Astraeus", key: "s28" },
-    { name: "Apollo", key: "s19" },
     { name: "Hera", key: "s4" },
     { name: "Persephone", key: "s12" },
+    { name: "Apollo", key: "s19" },
+    { name: "Artemis", key: "s13" },
+    { name: "Hermes", key: "s26" },
+    { name: "Ares", key: "s24" },
     { name: "Aphrodite", key: "s6" },
+    { name: "Hephaestus", key: "s15" },
     { name: "Demeter", key: "s7" },
-    { name: "Dionysus", key: "s8" }
+    { name: "Dionysus", key: "s8" },
+    { name: "Hestia", key: "s3" },
+    { name: "Hades", key: "s16" },
+    { name: "Nike", key: "s5" },
+    { name: "Atlas", key: "s1" },
+    { name: "Prometheus", key: "s10" }
   ];
 
   var LANGS = {
@@ -257,14 +264,14 @@
       }
     }).then(function (r) {
       j.update(r);
-      return fetchTimeout(BASE + "/api/request-token", {
+      return fetchTimeout(BASE + "/api/ui/session", {
         method: "POST",
         headers: apiH(true, j.str()),
         body: ""
       });
     }).then(function (r) {
       j.update(r);
-      if (!r.ok) throw new Error("request-token " + r.status);
+      if (!r.ok) throw new Error("ui/session " + r.status);
       return r.json();
     }).then(function (td) {
       var requestToken = td && td.token;
