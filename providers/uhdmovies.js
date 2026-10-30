@@ -29,6 +29,12 @@
   var TMDB_API_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
 
   function fetchWithTimeout(url, options, timeout) {
+    // QuickJS (mobil/TV box) ortaminda setTimeout tanimli olmayabilir.
+    // Bu durumda timeout olmadan fetch yap; native katmanin kendi
+    // zaman asimi (30-60s) devreye girer.
+    if (typeof setTimeout !== "function") {
+      return fetch(url, options || {});
+    }
     var timer = null;
     var timeoutPromise = new Promise(function (_, reject) {
       timer = setTimeout(function () { reject(new Error("API Timeout")); }, timeout || REQUEST_TIMEOUT);
