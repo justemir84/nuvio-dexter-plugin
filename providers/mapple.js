@@ -143,6 +143,10 @@
   /* ---------- http ---------- */
 
   function fetchTimeout(url, options, timeout) {
+    // QuickJS (mobil/TV box) ortaminda setTimeout tanimli olmayabilir.
+    if (typeof setTimeout !== "function") {
+      return fetch(url, options || {});
+    }
     timeout = timeout || TIMEOUT;
     var timer = null;
     var p = new Promise(function (_, reject) {
