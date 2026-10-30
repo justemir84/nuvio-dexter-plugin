@@ -379,6 +379,10 @@
         if (line.indexOf("#EXT-X-STREAM-INF") === 0) {
           var rm = line.match(/RESOLUTION=\d+x(\d+)/);
           var q = rm ? rm[1] + "p" : "Unknown";
+          var bm = line.match(/BANDWIDTH=(\d+)/);
+          var abm = line.match(/AVERAGE-BANDWIDTH=(\d+)/);
+          var bps = bm ? Number(bm[1]) : (abm ? Number(abm[1]) : 0);
+          var bitrate = bps ? (bps / 1000000).toFixed(1) + " Mbps" : "";
           var cm = line.match(/CODECS="([^"]+)"/i);
           var cds = cm ? cm[1].toLowerCase() : "";
           var vc = /dvh[1e]|dvhe|dav1/.test(cds) ? "HEVC" : (/hvc1|hev1|hevc/.test(cds) ? "HEVC" : (/avc1|avc3|avc/.test(cds) ? "H.264" : (/av01/.test(cds) ? "AV1" : "")));
@@ -388,11 +392,11 @@
           var ac = /ec-3|eac3|ddp/.test(cds) ? "DDP" : (/ac-3/.test(cds) ? "DD" : (/mp4a|aac/.test(cds) ? "AAC" : (/opus/.test(cds) ? "Opus" : "")));
           var shortTag = [vc, dv || hdr].filter(function (x) { return !!x; }).join(" ");
           var fullTag = [vc, dv || hdr, ac].filter(function (x) { return !!x; }).join(" ");
-          cur = { q: q, short: shortTag, full: fullTag };
+          cur = { q: q, short: shortTag, full: fullTag, bitrate: bitrate };
         } else if (line && line.charAt(0) !== "#" && cur) {
           out.push({
             name: "Mapple [" + hosterName + "] - " + cur.q + (cur.short ? " " + cur.short : ""),
-            title: display + "\n" + cur.q + (cur.full ? " " + cur.full : "") + " [HLS]",
+            title: display + "\n" + cur.q + (cur.bitrate ? " • " + cur.bitrate : "") + (cur.full ? " " + cur.full : "") + " [HLS]",
             url: resolveUrl(masterUrl, line), quality: cur.q, isM3u8: true, type: "hls",
             headers: pHeaders(), subtitles: subs, provider: "mapple"
           });
