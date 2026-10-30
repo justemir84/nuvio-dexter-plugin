@@ -12,6 +12,7 @@
   var ORIGIN = "https://moviesapi.to";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var KEY = "3a67e8866ae1d2bb9e81fe7f73315a56eb3bdf5e3e755c7554c8be6910aa6b13";
+  var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var TIMEOUT = 12000;
   var MAX_SOURCES = 3;
 
@@ -96,6 +97,24 @@
     return names.join(", ") + (extra > 0 ? " +" + extra : "");
   }
 
+
+  function tmdbLookup(tmdbId, mediaType) {
+    var type = mediaType === "tv" ? "tv" : "movie";
+    var url = "https://api.themoviedb.org/3/" + type + "/" + encodeURIComponent(tmdbId) +
+      "?api_key=" + TMDB_KEY + "&language=en-US&append_to_response=external_ids";
+    return fetchTimeout(url, { headers: { "User-Agent": UA, Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })
+      .then(function (d) {
+        if (!d) return null;
+        var ext = d.external_ids || {};
+        return {
+          title: d.name || d.title || d.original_name || d.original_title || "",
+          year: (d.first_air_date || d.release_date || "").substring(0, 4),
+          imdbId: ext.imdb_id || null
+        };
+      });
+  }
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[moviesapi]";
     var isTv = mediaType === "tv";
@@ -106,27 +125,48 @@
     var display = "";
     var subs = [];
 
-    return fetchTimeout(API + path, {
-      headers: { "User-Agent": UA, Accept: "application/json", Referer: ref, "x-player-key": KEY }
-    }).then(function (r) {
-      if (!r.ok) throw new Error("API " + r.status);
-      return r.json();
-    }).then(function (d) {
-      if (!d || !d.result || !d.sources || !d.sources.length) return [];
-      display = d.title || ("TMDB " + tmdbId);
-      if (d.year) display += " (" + d.year + ")";
+    var idsToTry = [String(tmdbId)];
+    return tmdbLookup(tmdbId, mediaType).then(function (info) {
+      if (info) {
+        if (info.title) {
+          display = info.title;
+          if (info.year) display += " (" + info.year + ")";
+        }
+        if (info.imdbId) idsToTry.push(info.imdbId);
+      }
+      if (!display) display = "TMDB " + tmdbId;
       if (isTv) display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
-      var allTracks = [];
-      d.sources.forEach(function (src) {
-        (src.tracks || []).forEach(function (t) { allTracks.push(t); });
-      });
-      subs = buildSubs(allTracks);
-      var pick = d.sources.slice(0, MAX_SOURCES);
-      return Promise.all(pick.map(function (src) {
-        return fetchTimeout(src.url, { headers: { "User-Agent": UA, Referer: SITE, Origin: ORIGIN } })
-          .then(function (m) { return m.ok ? m.text() : ""; }, function () { return ""; })
-          .then(function (txt) { var mi = txt ? masterInfo(txt) : null; return { src: src, quality: (mi && mi.q) || "Auto", vtag: mi ? mi.v : "", tags: mi ? mi.tag : "" }; });
-      }));
+
+      function tryId(idx) {
+        if (idx >= idsToTry.length) return [];
+        var curId = idsToTry[idx];
+        var p = isTv ? "/tv/" + curId + "/" + s + "/" + e : "/movie/" + curId;
+        return fetchTimeout(API + p, {
+          headers: { "User-Agent": UA, Accept: "application/json", Referer: ref, "x-player-key": KEY }
+        }).then(function (r) {
+          if (!r.ok) throw new Error("API " + r.status);
+          return r.json();
+        }).then(function (d) {
+          if (!d || !d.result || !d.sources || !d.sources.length) {
+            return tryId(idx + 1);
+          }
+          var allTracks = [];
+          d.sources.forEach(function (src) {
+            (src.tracks || []).forEach(function (t) { allTracks.push(t); });
+          });
+          subs = buildSubs(allTracks);
+          var pick = d.sources.slice(0, MAX_SOURCES);
+          return Promise.all(pick.map(function (src) {
+            return fetchTimeout(src.url, { headers: { "User-Agent": UA, Referer: SITE, Origin: ORIGIN } })
+              .then(function (m) { return m.ok ? m.text() : ""; }, function () { return ""; })
+              .then(function (txt) { var mi = txt ? masterInfo(txt) : null; return { src: src, quality: (mi && mi.q) || "Auto", vtag: mi ? mi.v : "", tags: mi ? mi.tag : "" }; });
+          }));
+        }).catch(function () {
+          return tryId(idx + 1);
+        });
+      }
+
+      return tryId(0);
     }).then(function (list) {
       var out = [];
       (list || []).forEach(function (item) {
