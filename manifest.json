@@ -363,7 +363,7 @@
     {
       "id": "uhdmovies",
       "name": "UHDMovies",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "description": "UHDMovies.us.org; thenaukriadda/driveseed zincirini çözüp doğrudan Google video (MKV) linki verir. Film + dizi.",
       "filename": "providers/uhdmovies.js",
       "supportedTypes": [
