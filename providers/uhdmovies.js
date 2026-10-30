@@ -548,35 +548,49 @@
     var abs = absoluteUrl(link, referer);
     if (!abs) return Promise.resolve(null);
 
+    // Mobil/TV (QuickJS) bazi ortamlarda redirect:"manual" desteklenmez.
+    // Once normal (auto-follow) fetch dene; Location header varsa onu kullan,
+    // yoksa son URL'den (res.url) dogrudan linki cikar.
     return fetchWithTimeout(abs, {
-      headers: buildHeaders(jar, referer),
-      redirect: "manual"
+      headers: buildHeaders(jar, referer)
     }).then(function (res) {
       if (jar) jar.store(res);
 
       var loc = null;
       try { loc = res.headers.get("location") || res.headers.get("Location"); } catch (e) {}
 
-      // 302: video-seed.dev/?url=<dogrudan video>
       if (loc) {
         var direct = extractDirectFromWrapper(absoluteUrl(loc, abs));
         if (direct) return direct;
       }
 
-      // Bazi fetch polyfill'leri "manual" modunu yok sayip yonlendirmeyi takip eder.
-      var followed = res.url || abs;
+      var followed = (res && res.url) ? res.url : abs;
       var direct2 = extractDirectFromWrapper(followed);
       if (direct2) return direct2;
 
       // Son sans: normal GET ile son URL'yi yakala.
       return httpGet(abs, jar, referer).then(function (r) {
-        return extractDirectFromWrapper(r.url);
+        var u = (r && r.url) ? r.url : abs;
+        var direct = extractDirectFromWrapper(u);
+        if (direct) return direct;
+        var href = firstHref(r.text, /href=["']([^"']*(?:workers\.dev|googleusercontent\.com|\.mkv|\.mp4)[^"']*)["']/i);
+        if (href) return absoluteUrl(href, r.url || abs);
+        var next = jsRedirect(r.text) || metaRefresh(r.text);
+        if (next) return extractDirectFromWrapper(absoluteUrl(next, r.url || abs));
+        return null;
       }, function () {
         return null;
       });
     }, function () {
       return httpGet(abs, jar, referer).then(function (r) {
-        return extractDirectFromWrapper(r.url);
+        var u = (r && r.url) ? r.url : abs;
+        var direct = extractDirectFromWrapper(u);
+        if (direct) return direct;
+        var href = firstHref(r.text, /href=["']([^"']*(?:workers\.dev|googleusercontent\.com|\.mkv|\.mp4)[^"']*)["']/i);
+        if (href) return absoluteUrl(href, r.url || abs);
+        var next = jsRedirect(r.text) || metaRefresh(r.text);
+        if (next) return extractDirectFromWrapper(absoluteUrl(next, r.url || abs));
+        return null;
       }, function () {
         return null;
       });
