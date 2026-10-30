@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.16",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi sağlayıcıları",
+  "version": "2.3.17",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -437,6 +437,19 @@
         "tr",
         "en"
       ]
+    },
+    {
+      "id": "dizibal",
+      "name": "DiziBal",
+      "description": "dizibal.org - film ve diziler icin HLS kaynaklari (Turkce dublaj/altyazi)",
+      "version": "1.0.0",
+      "filename": "providers/dizibal.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["m3u8"],
+      "contentLanguage": ["tr"],
+      "logo": "https://www.google.com/s2/favicons?domain=dizibal.org&sz=128"
     }
   ]
 }
