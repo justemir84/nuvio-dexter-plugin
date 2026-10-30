@@ -20,6 +20,7 @@
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
   var TIMEOUT = 15000;
+  var PROBE_TIMEOUT = 4000;
 
   // ---------------------------------------------------------------- helpers
 
@@ -51,8 +52,7 @@
       });
   }
 
-  function cleanText(html) {
-    return String(html || "")
+  function cleanText(html) {    return String(html || "")
       .replace(/<[^>]*>/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -260,6 +260,109 @@
     return m ? m[1] : "https://pilavyerplay.top";
   }
 
+  // ---- CDN erisim testi ------------------------------------------------
+  // Site, bazi ISS'lerin pilavyer1-6.top CDN alan adlarini engelledigini
+  // varsayar ve engel durumunda stream.php'ye "cdn=0" ekleyerek segmentleri
+  // origin sunucusundan servis eder. Nuvio'nun oynaticisi bu geri donusu
+  // kendisi yapamadigi icin testi burada yapip dogru URL'yi secmek gerekir.
+
+  function resolveUrl(base, rel) {
+    rel = String(rel || "");
+    if (/^https?:\/\//i.test(rel)) return rel;
+    var schemeIdx = base.indexOf("://");
+    var hostStart = schemeIdx === -1 ? 0 : schemeIdx + 3;
+    var pathStart = base.indexOf("/", hostStart);
+    if (pathStart === -1) return base + "/" + rel;
+    if (rel.charAt(0) === "/") return base.slice(0, pathStart) + rel;
+    var clean = base.split("#")[0].split("?")[0];
+    return clean.slice(0, clean.lastIndexOf("/") + 1) + rel;
+  }
+
+  function probeUrl(url, headers, method) {
+    if (!url) return Promise.resolve(true);
+    var timer = null;
+    var timeout = new Promise(function (_, reject) {
+      timer = setTimeout(function () { reject(new Error("probe timeout")); }, PROBE_TIMEOUT);
+    });
+    var opts = { method: method || "HEAD", headers: headers || { "User-Agent": UA } };
+    return Promise.race([fetch(url, opts), timeout])
+      .then(function (res) {
+        if (timer) clearTimeout(timer);
+        if (!res) return false;
+        // 405: HEAD desteklenmiyor ama host ayakta.
+        return !!res.ok || res.status === 405;
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        return false;
+      });
+  }
+
+  function quickText(url, headers) {
+    var timer = null;
+    var timeout = new Promise(function (_, reject) {
+      timer = setTimeout(function () { reject(new Error("probe timeout")); }, PROBE_TIMEOUT);
+    });
+    return Promise.race([fetch(url, { headers: headers }), timeout])
+      .then(function (res) {
+        if (timer) clearTimeout(timer);
+        if (!res || !res.ok) return null;
+        return res.text();
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        return null;
+      });
+  }
+
+  function firstSegmentUrl(playlist, playlistUrl, headers) {
+    var lines = String(playlist || "").split(/\r?\n/);
+    var variantUri = null, mediaUri = null, afterVariant = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+      if (line.indexOf("#EXT-X-STREAM-INF") === 0) { afterVariant = true; continue; }
+      if (line.charAt(0) === "#") { afterVariant = false; continue; }
+      if (afterVariant && !variantUri) { variantUri = line; break; }
+      if (!mediaUri) mediaUri = line;
+    }
+
+    if (variantUri) {
+      var variantUrl = resolveUrl(playlistUrl, variantUri);
+      return quickText(variantUrl, headers).then(function (txt) {
+        if (!txt) return null;
+        var vlines = txt.split(/\r?\n/);
+        for (var j = 0; j < vlines.length; j++) {
+          var l = vlines[j].trim();
+          if (l && l.charAt(0) !== "#") return resolveUrl(variantUrl, l);
+        }
+        return null;
+      });
+    }
+    return Promise.resolve(mediaUri ? resolveUrl(playlistUrl, mediaUri) : null);
+  }
+
+  function cdnReachable(cfg, master, base) {
+    var headers = { "User-Agent": UA, Referer: base + "/", Origin: base };
+    var checks = [];
+    if (cfg.cdnProbe) checks.push(probeUrl(cfg.cdnProbe, headers, "GET"));
+    checks.push(
+      firstSegmentUrl(master, cfg.stream, headers).then(function (seg) {
+        return seg ? probeUrl(seg, { "User-Agent": UA, Referer: base + "/" }, "HEAD") : true;
+      })
+    );
+    return Promise.all(checks).then(function (results) {
+      for (var i = 0; i < results.length; i++) {
+        if (!results[i]) return false;
+      }
+      return true;
+    });
+  }
+
+  function addParam(url, param) {
+    return url + (url.indexOf("?") === -1 ? "?" : "&") + param;
+  }
+
   function resolvePlayer(pageHtml) {
     var player = extractPlayer(pageHtml);
     if (!player) return Promise.resolve(null);
@@ -279,7 +382,13 @@
         Referer: base + "/",
         Origin: base
       }).then(function (master) {
-        return { cfg: cfg, base: base, master: master || "" };
+        master = master || "";
+        return cdnReachable(cfg, master, base).then(function (cdnOk) {
+          // CDN engelliyse segmentleri origin sunucusundan al.
+          var url = cdnOk ? cfg.stream : addParam(cfg.stream, "cdn=0&r=probe");
+          console.log("[dizibal] CDN erisimi: " + (cdnOk ? "OK" : "engelli -> cdn=0"));
+          return { cfg: cfg, base: base, master: master, url: url, cdnOk: cdnOk };
+        });
       });
     });
   }
@@ -391,24 +500,34 @@
             if (subs.length) extras.push(subs.length + " altyazi");
             if (audio) extras.push(audio);
 
-            console.log(tag + " Kaynak bulundu: " + quality + " (" + subs.length + " altyazi)");
+            var headers = {
+              "User-Agent": UA,
+              "Referer": resolved.base + "/",
+              "Origin": resolved.base
+            };
+            var titleBase = display + " | " + quality + " [HLS]" + (extras.length ? " | " + extras.join(", ") : "");
 
-            return [{
-              name: "DiziBal - " + quality,
-              title: display + " | " + quality + " [HLS]" + (extras.length ? " | " + extras.join(", ") : ""),
-              url: cfg.stream,
-              quality: quality,
-              isM3u8: true,
-              type: "hls",
-              language: "tr",
-              provider: "dizibal",
-              headers: {
-                "User-Agent": UA,
-                "Referer": resolved.base + "/",
-                "Origin": resolved.base
-              },
-              subtitles: subs
-            }];
+            function makeStream(url, isOrigin) {
+              return {
+                name: "DiziBal" + (isOrigin ? " (Sunucu)" : "") + " - " + quality,
+                title: titleBase + (isOrigin ? " | Sunucu" : ""),
+                url: url,
+                quality: quality,
+                isM3u8: true,
+                type: "hls",
+                language: "tr",
+                provider: "dizibal",
+                headers: headers,
+                subtitles: subs
+              };
+            }
+
+            var out = [makeStream(resolved.url, !resolved.cdnOk)];
+            // CDN secildiyse takilma ihtimaline karsi origin alternatifini de sun.
+            if (resolved.cdnOk) out.push(makeStream(addParam(cfg.stream, "cdn=0&r=alt"), true));
+
+            console.log(tag + " Kaynak bulundu: " + quality + " (" + subs.length + " altyazi)");
+            return out;
           });
         });
       });
