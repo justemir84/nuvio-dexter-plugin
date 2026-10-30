@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.14",
+  "version": "2.3.15",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV sağlayıcıları",
   "scrapers": [
     {
@@ -363,7 +363,7 @@
     {
       "id": "uhdmovies",
       "name": "UHDMovies",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "description": "UHDMovies.us.org; thenaukriadda/driveseed zincirini çözüp doğrudan Google video (MKV) linki verir. Film + dizi.",
       "filename": "providers/uhdmovies.js",
       "supportedTypes": [
