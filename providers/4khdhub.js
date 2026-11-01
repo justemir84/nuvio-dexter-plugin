@@ -321,6 +321,7 @@ function extractHubCloud(hubCloudUrl, baseMeta) {
       return [];
     const $ = cheerio2.load(linksHtml);
     const results = [];
+    const pixelResults = [];
     const sizeText = $("#size").text();
     const titleText = $("title").text().trim();
     const currentMeta = __spreadProps(__spreadValues({}, baseMeta), {
@@ -333,7 +334,9 @@ function extractHubCloud(hubCloudUrl, baseMeta) {
       if (!href)
         return;
       if (text.includes("10Gbps") || text.includes("PixelServer") || href.includes("hubcloud.cx")) {
-        results.push({
+        // Pixel/10Gbps sunuculari su an erisilemez (500) durumda; calismayan
+        // linkleri listeleyip karmasayi onlemek icin ayri tutuyoruz.
+        pixelResults.push({
           source: "HubCloud 10Gbps",
           url: href,
           meta: currentMeta
@@ -358,7 +361,10 @@ function extractHubCloud(hubCloudUrl, baseMeta) {
         });
       }
     });
-    return results;
+    // Calisan (FSL/Direct R2/ZipDisk) link varsa onlar gosterilir; hicbiri
+    // yoksa pixel linkleri yedek olarak birakilir.
+    if (results.length) return results;
+    return pixelResults;
   });
 }
 var cheerio3 = require("cheerio-without-node-native");
