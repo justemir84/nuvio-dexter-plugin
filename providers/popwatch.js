@@ -32,7 +32,7 @@
   var SINGLE_LINK = false;
   // Bu dillerdeki linkler listede gosterilmez (kucuk harf; " sub" eki yok sayilir).
   // Bos dizi = filtre yok. Ornek: ["russian", "spanish"] da eklenebilir.
-  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam"];
+  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam", "indonesian", "indonesia", "portuguese", "portugues", "português", "kurdish", "kurd", "telugu"];
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -136,7 +136,10 @@
     var b = baseLang(l);
     if (!b) return false;
     for (var i = 0; i < HIDE_LANGS.length; i++) {
-      if (b === HIDE_LANGS[i]) return true;
+      var h = HIDE_LANGS[i];
+      if (b === h) return true;
+      if (b.length >= 4 && h.indexOf(b) !== -1) return true;
+      if (h.length >= 4 && b.indexOf(h) !== -1) return true;
     }
     return false;
   }
@@ -177,12 +180,16 @@
 
     function toStream(it) {
       var multi = it.audio.length > 1;
+      var dispAudio = (it.audio || []).filter(function (a) { return !isHiddenLang(a); });
+      if (!dispAudio.length) dispAudio = it.audio || [];
+      var dispSubs = (it.subs || []).filter(function (s) { return !isHiddenLang(s); });
+      if (!dispSubs.length) dispSubs = it.subs || [];
       var meta = [];
-      if (multi) meta.push("ses: " + listPreview(it.audio, 8));
-      else if (it.audio.length === 1 && it.lang && it.lang.toLowerCase() !== cleanLang(it.audio[0]).toLowerCase()) {
-        meta.push("ses: " + cleanLang(it.audio[0]));
+      if (multi) meta.push("ses: " + listPreview(dispAudio, 8));
+      else if (dispAudio.length === 1 && it.lang && it.lang.toLowerCase() !== cleanLang(dispAudio[0]).toLowerCase()) {
+        meta.push("ses: " + cleanLang(dispAudio[0]));
       }
-      if (it.subs.length) meta.push("altyazi: " + listPreview(it.subs, 6));
+      if (dispSubs.length) meta.push("altyazi: " + listPreview(dispSubs, 6));
       return {
         name: "PopWatch - " + (multi ? "Cok Sesli " : (it.lang ? it.lang + " " : "")) + it.q,
         title: display + "\n" + it.q + (multi || !it.lang ? "" : " " + it.lang) +
