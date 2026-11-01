@@ -148,7 +148,7 @@
     {
       "id": "popwatch",
       "name": "PopWatch",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "description": "Kendi scraper ağı (7 kaynak); film + dizi, SRT altyazı",
       "filename": "providers/popwatch.js",
       "supportedTypes": [
@@ -205,7 +205,7 @@
     {
       "id": "vidbolt",
       "name": "VidBolt",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "1080p HLS; HLS içinde 10 dilde ses + 5 altyazı",
       "filename": "providers/vidbolt.js",
       "supportedTypes": [
