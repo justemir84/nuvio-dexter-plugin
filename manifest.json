@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.20",
+  "version": "2.3.21",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal sağlayıcıları",
   "scrapers": [
     {
@@ -244,7 +244,7 @@
     {
       "id": "aoneroom",
       "name": "123Movies",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "aoneroom altyapısı; 1080p'ye kadar MP4, SRT altyazı",
       "filename": "providers/aoneroom.js",
       "supportedTypes": [
