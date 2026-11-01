@@ -27,7 +27,7 @@
   var PREFERS = ["quantum", "vega", "callisto", "orion", "fastva"];
   // Bu dillerdeki kaynaklar listede gosterilmez (kucuk harf; " sub" eki yok sayilir).
   // Bos dizi = filtre yok.
-  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam", "indonesian", "indonesia", "portuguese", "portugues", "português", "kurdish", "kurd", "telugu"];
+  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam", "indonesian", "indonesia", "portuguese", "portugues", "português", "kurdish", "kurd", "telugu", "russian", "русский", "rus"];
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -189,6 +189,12 @@
         return (en.audio && en.audio.length > 1) || !isHiddenLang(en.lang);
       });
       if (visibleEntries.length) entries = visibleEntries;
+
+      // Sadece 1080p ve ustu (Auto korunur; 480/720 elenir).
+      var highEntries = entries.filter(function (en) {
+        return /^auto$/i.test(String(en.q || "")) || qRank(en.q) >= 3;
+      });
+      if (highEntries.length) entries = highEntries;
 
       // Orijinal/Ingilizce kaynak kosulsuz ilk sirada (kaliteden bagimsiz);
       // sonra kalite, sonra kaynak sirasi. Ilk satir her zaman orijinal olsun.
