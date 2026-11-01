@@ -32,7 +32,7 @@
   var SINGLE_LINK = false;
   // Bu dillerdeki linkler listede gosterilmez (kucuk harf; " sub" eki yok sayilir).
   // Bos dizi = filtre yok. Ornek: ["russian", "spanish"] da eklenebilir.
-  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam", "indonesian", "indonesia", "portuguese", "portugues", "português", "kurdish", "kurd", "telugu"];
+  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam", "indonesian", "indonesia", "portuguese", "portugues", "português", "kurdish", "kurd", "telugu", "russian", "русский", "rus"];
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -213,6 +213,12 @@
         return x.audio.length > 1 || !isHiddenLang(x.lang);
       });
       if (visible.length) items = visible;
+
+      // Sadece 1080p ve ustu (Auto korunur; 480/720 elenir).
+      var high = items.filter(function (x) {
+        return /^auto$/i.test(String(x.q || "")) || qRank(x.q) >= 3;
+      });
+      if (high.length) items = high;
 
       // 1) Master'inda birden fazla ses parcasi olan kaynak varsa TEK link yeter:
       //    dublaj secimi oynaticinin "ses parcalari" menusunden yapilir.
