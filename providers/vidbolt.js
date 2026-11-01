@@ -25,6 +25,9 @@
   var TIMEOUT = 12000;
   var MAX_STREAMS = 12;
   var PREFERS = ["quantum", "vega", "callisto", "orion", "fastva"];
+  // Bu dillerdeki kaynaklar listede gosterilmez (kucuk harf; " sub" eki yok sayilir).
+  // Bos dizi = filtre yok.
+  var HIDE_LANGS = ["tamil", "hindi", "arabic", "kannada", "malayalam", "indonesian", "indonesia", "portuguese", "portugues", "português", "kurdish", "kurd", "telugu"];
 
   function fetchTimeout(url, options, timeout) {
     timeout = timeout || TIMEOUT;
@@ -95,6 +98,26 @@
     return /english|original/i.test(String(s || ""));
   }
 
+  function cleanLang(l) {
+    return String(l || "").replace(/^\s*\d+[\.\)]\s*/, "").trim();
+  }
+
+  function baseLang(l) {
+    return cleanLang(l).toLowerCase().replace(/\s+sub$/, "").trim();
+  }
+
+  function isHiddenLang(l) {
+    var b = baseLang(l);
+    if (!b) return false;
+    for (var i = 0; i < HIDE_LANGS.length; i++) {
+      var h = HIDE_LANGS[i];
+      if (b === h) return true;
+      if (b.length >= 4 && h.indexOf(b) !== -1) return true;
+      if (h.length >= 4 && b.indexOf(h) !== -1) return true;
+    }
+    return false;
+  }
+
   function englishRank(en) {
     if (isEnglish(en.lang)) return 0;
     if (en.lang === "Multi" && (en.audio || []).some(function (a) { return isEnglish(a); })) return 0;
@@ -160,6 +183,13 @@
         return { x: x, i: i, q: q, kind: kind, lang: lang, audio: mi.audio, subs: mi.subs, server: x._server };
       });
 
+      // Gizlenecek diller: tek dilli linklerden HIDE_LANGS listesindekileri cikar.
+      // Cok sesli master'lar korunur (icinde baska diller de var).
+      var visibleEntries = entries.filter(function (en) {
+        return (en.audio && en.audio.length > 1) || !isHiddenLang(en.lang);
+      });
+      if (visibleEntries.length) entries = visibleEntries;
+
       // Orijinal/Ingilizce kaynak kosulsuz ilk sirada (kaliteden bagimsiz);
       // sonra kalite, sonra kaynak sirasi. Ilk satir her zaman orijinal olsun.
       entries.sort(function (a, b) {
@@ -178,10 +208,14 @@
         var name = "VidBolt - " + (srvName ? srvName + " " : "") + (en.lang ? en.lang + " " : "") + label;
         if (seenNames[name]) { seenNames[name]++; name = name + " (" + seenNames[name] + ")"; }
         else seenNames[name] = 1;
+        var dispAudio = (en.audio || []).filter(function (a) { return !isHiddenLang(a); });
+        if (!dispAudio.length) dispAudio = en.audio || [];
+        var dispSubs = (en.subs || []).filter(function (s) { return !isHiddenLang(s); });
+        if (!dispSubs.length) dispSubs = en.subs || [];
         var meta = [];
-        if (en.audio.length > 1) meta.push("ses: " + en.audio.join(", "));
-        else if (en.audio.length === 1 && en.lang !== en.audio[0]) meta.push("ses: " + en.audio.join(", "));
-        if (en.subs.length) meta.push("altyazi: " + en.subs.join(", "));
+        if (dispAudio.length > 1) meta.push("ses: " + dispAudio.join(", "));
+        else if (dispAudio.length === 1 && en.lang !== dispAudio[0]) meta.push("ses: " + dispAudio.join(", "));
+        if (dispSubs.length) meta.push("altyazi: " + dispSubs.join(", "));
         return {
           name: name,
           title: display + "\n" + label + (en.lang ? " " + en.lang : "") +
