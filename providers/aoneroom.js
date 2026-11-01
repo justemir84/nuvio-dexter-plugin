@@ -162,10 +162,11 @@
           var seenU = {};
           if (data) {
             (data.streams || []).forEach(function (x) {
-              if (x && x.url && !seenU[x.url]) { seenU[x.url] = 1; usable.push(x); }
+              // Sadece 1080p ve ustu cozunurlukler (720p ve alti elenir).
+              if (x && x.url && !seenU[x.url] && qRank(qFromRes(x.resolutions)) >= 3) { seenU[x.url] = 1; usable.push(x); }
             });
             (data.hls || []).forEach(function (x) {
-              if (x && x.url && !seenU[x.url]) { seenU[x.url] = 1; x._hls = 1; usable.push(x); }
+              if (x && x.url && !seenU[x.url] && qRank(qFromRes(x.resolutions)) >= 3) { seenU[x.url] = 1; x._hls = 1; usable.push(x); }
             });
           }
           if (!usable.length) return tryNext();
