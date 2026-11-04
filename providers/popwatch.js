@@ -181,9 +181,7 @@
     function toStream(it) {
       var multi = it.audio.length > 1;
       var dispAudio = (it.audio || []).filter(function (a) { return !isHiddenLang(a); });
-      if (!dispAudio.length) dispAudio = it.audio || [];
       var dispSubs = (it.subs || []).filter(function (s) { return !isHiddenLang(s); });
-      if (!dispSubs.length) dispSubs = it.subs || [];
       var meta = [];
       if (multi) meta.push("ses: " + listPreview(dispAudio, 8));
       else if (dispAudio.length === 1 && it.lang && it.lang.toLowerCase() !== cleanLang(dispAudio[0]).toLowerCase()) {
