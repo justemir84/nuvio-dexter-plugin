@@ -188,13 +188,13 @@
       var visibleEntries = entries.filter(function (en) {
         return (en.audio && en.audio.length > 1) || !isHiddenLang(en.lang);
       });
-      if (visibleEntries.length) entries = visibleEntries;
+      entries = visibleEntries;
 
       // Sadece 1080p ve ustu (Auto korunur; 480/720 elenir).
       var highEntries = entries.filter(function (en) {
         return /^auto$/i.test(String(en.q || "")) || qRank(en.q) >= 3;
       });
-      if (highEntries.length) entries = highEntries;
+      entries = highEntries;
 
       // Orijinal/Ingilizce kaynak kosulsuz ilk sirada (kaliteden bagimsiz);
       // sonra kalite, sonra kaynak sirasi. Ilk satir her zaman orijinal olsun.
@@ -215,9 +215,7 @@
         if (seenNames[name]) { seenNames[name]++; name = name + " (" + seenNames[name] + ")"; }
         else seenNames[name] = 1;
         var dispAudio = (en.audio || []).filter(function (a) { return !isHiddenLang(a); });
-        if (!dispAudio.length) dispAudio = en.audio || [];
         var dispSubs = (en.subs || []).filter(function (s) { return !isHiddenLang(s); });
-        if (!dispSubs.length) dispSubs = en.subs || [];
         var meta = [];
         if (dispAudio.length > 1) meta.push("ses: " + dispAudio.join(", "));
         else if (dispAudio.length === 1 && en.lang !== dispAudio[0]) meta.push("ses: " + dispAudio.join(", "));
