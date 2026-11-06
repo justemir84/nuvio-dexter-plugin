@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.28",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene ve DiziMom sağlayıcıları",
+  "version": "2.3.29",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene ve DiziMom ve Dizilla sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -490,6 +490,26 @@
         "en"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=ddizimom.net&sz=128"
+    },
+    {
+      "id": "dizilla",
+      "name": "Dizilla",
+      "description": "dizilla.la - /dizi/ sayfalarından bölüm kaynakları, Pichive (four.pichive.online) HLS, Türkçe dublaj/altyazı",
+      "version": "1.0.0",
+      "filename": "providers/dizilla.js",
+      "supportedTypes": [
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "tr",
+        "en"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=dizilla.la&sz=128"
     }
 
   ]
