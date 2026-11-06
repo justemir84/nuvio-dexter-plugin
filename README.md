@@ -37,6 +37,7 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | FrameX TV | Film + Dizi | MP4 / HLS | Çoklu provider; codec, bitrate ve dosya boyutu zenginleştirme; çok dilli VTT altyazı |
 | HDFilmCehennemi | Film + Dizi | HLS (m3u8) | HDFilmCehennemi.nl; kapalı kaynak HLS ve çok dilli VTT altyazı |
 | DiziBal | Film + Dizi | HLS (m3u8) | dizibal.org; Türkçe dublaj ve altyazı |
+| DiziMom | Film + Dizi | HLS (m3u8) | ddizimom.net; anime sayfaları dahil, Türkçe altyazı/dublaj |
 | FullHDFilmizlesene | Film | HLS (m3u8) | FullHDFilmizlesene.now; RapidVid/Vidmoly/Vidmoxy kaynakları, Türkçe dublaj/altyazı |
 | 4KHD Club | Film + Dizi | MKV | 4K-HD.Club arşivi; 4K REMUX indirme bağlantıları ve medya bilgileri (varsayılan olarak devre dışı) |
 | Febbox | Film + Dizi | MP4 / MKV | Febbox / SuperStream kaynakları; Febbox token gerekir (varsayılan olarak devre dışı) |
