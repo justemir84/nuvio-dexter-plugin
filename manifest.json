@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.23",
+  "version": "2.3.24",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal sağlayıcıları",
   "scrapers": [
     {
@@ -129,7 +129,7 @@
     {
       "id": "moviesapi",
       "name": "MoviesAPI",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "description": "VidSpark backend; film + dizi, TMDB/IMDB fallback, çok dilli VTT altyazı",
       "filename": "providers/moviesapi.js",
       "supportedTypes": [
@@ -421,7 +421,7 @@
     {
       "id": "hdfilmcehennemi",
       "name": "HDFilmCehennemi",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "HDFilmCehennemi.nl; film ve dizi, HLS (Close source), çok dilli VTT altyazı",
       "filename": "providers/hdfilmcehennemi.js",
       "supportedTypes": [
