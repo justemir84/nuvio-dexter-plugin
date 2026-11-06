@@ -32,6 +32,11 @@
     "Referer": BASE + "/"
   };
 
+  function getSettings(settings) {
+    if (typeof SCRAPER_SETTINGS !== "undefined" && SCRAPER_SETTINGS) return SCRAPER_SETTINGS;
+    return settings || {};
+  }
+
   function fetchTimeout(url, options, timeout) {
     var timer = null;
     var timeoutPromise = new Promise(function (_, reject) {
@@ -97,25 +102,57 @@
     return hits / (ta.length + tb.length - hits);
   }
 
+  function getCryptoJS() {
+    if (typeof CryptoJS !== "undefined" && CryptoJS) return CryptoJS;
+    if (typeof require === "function") {
+      try {
+        var mod = require("crypto-js");
+        if (mod) return mod;
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function decryptWithCryptoJS(encoded) {
+    var C = getCryptoJS();
+    if (!C) throw new Error("CryptoJS unavailable");
+    var ciphertext = C.enc.Base64.parse(encoded);
+    var params = C.lib.CipherParams.create({ ciphertext: ciphertext });
+    var keyText = C.SHA256(SECRET).toString(C.enc.Base64).substring(0, 32);
+    var key = C.enc.Utf8.parse(keyText);
+    var iv = C.enc.Utf8.parse("\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    var decrypted = C.AES.decrypt(params, key, {
+      iv: iv,
+      mode: C.mode.CBC,
+      padding: C.pad.Pkcs7
+    });
+    return JSON.parse(decrypted.toString(C.enc.Utf8));
+  }
+
   async function decryptSecureData(encoded) {
     if (!encoded) return null;
-    var raw = new Uint8Array(base64ToBytes(encoded));
-    var hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SECRET));
-    var keyBase64 = bytesToBase64(new Uint8Array(hash)).substring(0, 32);
-    var key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(keyBase64),
-      { name: "AES-CBC" },
-      false,
-      ["decrypt"]
-    );
-    var plain = await crypto.subtle.decrypt(
-      { name: "AES-CBC", iv: new Uint8Array(16) },
-      key,
-      raw
-    );
-    var text = new TextDecoder("utf-8").decode(new Uint8Array(plain));
-    return JSON.parse(text);
+    try {
+      var raw = new Uint8Array(base64ToBytes(encoded));
+      var hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(SECRET));
+      var keyBase64 = bytesToBase64(new Uint8Array(hash)).substring(0, 32);
+      var key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(keyBase64),
+        { name: "AES-CBC" },
+        false,
+        ["decrypt"]
+      );
+      var plain = await crypto.subtle.decrypt(
+        { name: "AES-CBC", iv: new Uint8Array(16) },
+        key,
+        raw
+      );
+      var text = new TextDecoder("utf-8").decode(new Uint8Array(plain));
+      return JSON.parse(text);
+    } catch (e) {
+      console.log("[selcukflix] crypto.subtle failed (" + (e && e.message) + "), trying CryptoJS");
+      return decryptWithCryptoJS(encoded);
+    }
   }
 
   async function fetchText(url, options) {
@@ -201,7 +238,11 @@
       }
     });
 
-    if (!best || bestScore < 25) return null;
+    if (!best || bestScore < 25) {
+      console.log("[selcukflix] Search no match: " + title + " (" + year + ")");
+      return null;
+    }
+    console.log("[selcukflix] Search match: " + (best.object_name || title) + " -> " + best.used_slug);
     return {
       slug: best.used_slug,
       title: best.object_name || title,
@@ -217,15 +258,30 @@
   }
 
   async function getPageData(pageUrl) {
+    console.log("[selcukflix] Fetch page: " + pageUrl);
     var html = await fetchText(pageUrl, { headers: SITE_HEADERS });
-    if (!html) return null;
+    if (!html) {
+      console.log("[selcukflix] Page fetch failed");
+      return null;
+    }
     var nextData = extractNextData(html);
-    if (!nextData || !nextData.props || !nextData.props.pageProps) return null;
+    if (!nextData || !nextData.props || !nextData.props.pageProps) {
+      console.log("[selcukflix] __NEXT_DATA__ missing");
+      return null;
+    }
     var pageProps = nextData.props.pageProps;
-    if (!pageProps.secureData) return null;
+    if (!pageProps.secureData) {
+      console.log("[selcukflix] secureData missing");
+      return null;
+    }
     try {
-      return await decryptSecureData(pageProps.secureData);
-    } catch (e) { return null; }
+      var decoded = await decryptSecureData(pageProps.secureData);
+      console.log("[selcukflix] secureData decrypted");
+      return decoded;
+    } catch (e) {
+      console.log("[selcukflix] secureData decrypt failed: " + e.message);
+      return null;
+    }
   }
 
   function extractIframeUrl(sourceContent) {
@@ -248,11 +304,37 @@
     return "tr";
   }
 
-  async function source2Stream(origin, token, iframeUrl) {
+  async function fetchPichive(url, headers, settings) {
+    settings = getSettings(settings);
+    var target = url;
+    var proxy = settings.pichiveProxy ? String(settings.pichiveProxy).trim() : "";
+    if (proxy) {
+      target = proxy.indexOf("{url}") !== -1
+        ? proxy.replace("{url}", encodeURIComponent(url))
+        : proxy + (proxy.indexOf("?") !== -1 ? "&" : "?") + "url=" + encodeURIComponent(url);
+    }
+    var finalHeaders = {};
+    Object.keys(headers || {}).forEach(function (key) { finalHeaders[key] = headers[key]; });
+    if (settings.pichiveCookie) {
+      finalHeaders.Cookie = String(settings.pichiveCookie).trim();
+    }
+    return fetchTimeout(target, { headers: finalHeaders }, TIMEOUT);
+  }
+
+  async function source2Stream(origin, token, iframeUrl, settings) {
     var url = origin + "/source2.php?v=" + encodeURIComponent(token);
-    var text = await fetchText(url, {
-      headers: { "User-Agent": UA, "Referer": iframeUrl, "Accept": "*/*" }
-    });
+    var response = null;
+    try {
+      response = await fetchPichive(url, {
+        "User-Agent": UA, "Referer": iframeUrl, "Accept": "*/*"
+      }, settings);
+    } catch (e) {
+      console.log("[selcukflix] source2 fetch error: " + e.message);
+      return null;
+    }
+    console.log("[selcukflix] source2 HTTP " + response.status);
+    if (!response.ok) return null;
+    var text = await response.text();
     if (!text) return null;
     var match = text.match(/file["']?\s*:\s*["']([^"']+)["']/i);
     if (!match) return null;
@@ -261,13 +343,30 @@
     return streamUrl;
   }
 
-  async function resolvePichive(iframeUrl, pageUrl) {
+  async function resolvePichive(iframeUrl, pageUrl, settings) {
     var origin;
     try { origin = new URL(iframeUrl).origin; } catch (e) { return null; }
+    console.log("[selcukflix] Pichive iframe: " + iframeUrl);
 
-    var html = await fetchText(iframeUrl, {
-      headers: { "User-Agent": UA, "Referer": pageUrl, "Accept": "text/html" }
-    });
+    var response = null;
+    try {
+      response = await fetchPichive(iframeUrl, {
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+        "Referer": pageUrl
+      }, settings);
+    } catch (e) {
+      console.log("[selcukflix] Pichive fetch error: " + e.message);
+      return null;
+    }
+    console.log("[selcukflix] Pichive HTTP " + response.status);
+    if (!response.ok) return null;
+    var html = await response.text();
+    if (/Attention Required|Just a moment|cf-browser-verification/i.test(html)) {
+      console.log("[selcukflix] Pichive Cloudflare block");
+      return null;
+    }
 
     var token = html ? (html.match(/window\.openPlayer\(\s*['"]([^'"]+)['"]/) || [])[1] : null;
     var subtitles = [];
@@ -293,9 +392,10 @@
       var vMatch = iframeUrl.match(/[?&]v=([^&]+)/);
       if (vMatch) token = vMatch[1];
     }
+    console.log("[selcukflix] Pichive token: " + (token ? "yes" : "no"));
     if (!token) return null;
 
-    var streamUrl = await source2Stream(origin, token, iframeUrl);
+    var streamUrl = await source2Stream(origin, token, iframeUrl, settings);
     if (!streamUrl) return null;
 
     var streams = [{
@@ -309,7 +409,7 @@
     // Turkish dublaj token (ContentX layout): ,"<token>","Türkçe"
     var dublajMatch = html ? html.match(/,\s*["']([^"']+)["']\s*,\s*["']Türkçe/i) : null;
     if (dublajMatch && dublajMatch[1] !== token) {
-      var dublajUrl = await source2Stream(origin, dublajMatch[1], iframeUrl);
+      var dublajUrl = await source2Stream(origin, dublajMatch[1], iframeUrl, settings);
       if (dublajUrl && dublajUrl !== streamUrl) {
         streams.push({
           url: dublajUrl,
@@ -344,15 +444,19 @@
     return 0.5;
   }
 
-  async function streamsFromSources(sources, display, pageUrl) {
+  async function streamsFromSources(sources, display, pageUrl, settings) {
     var streams = [], seen = {};
     for (var i = 0; i < sources.length; i++) {
       var source = sources[i] || {};
       var iframeUrl = extractIframeUrl(source.source_content);
       if (!iframeUrl || seen[iframeUrl]) continue;
       seen[iframeUrl] = true;
+      console.log("[selcukflix] Source iframe: " + iframeUrl);
       var resolved = null;
-      try { resolved = await resolvePichive(iframeUrl, pageUrl); } catch (e) {}
+      try { resolved = await resolvePichive(iframeUrl, pageUrl, settings); } catch (e) {
+        console.log("[selcukflix] Pichive resolve error: " + e.message);
+      }
+      console.log("[selcukflix] Pichive streams: " + (resolved ? resolved.length : 0));
       if (!resolved || !resolved.length) continue;
 
       var quality = qualityFromName(source.quality_name);
@@ -382,8 +486,9 @@
     return streams;
   }
 
-  async function getStreams(tmdbId, mediaType, season, episode) {
+  async function getStreams(tmdbId, mediaType, season, episode, settings) {
     var tag = "[selcukflix]";
+    settings = getSettings(settings);
     var isTv = mediaType === "tv" || mediaType === "series";
     var wantedSeason = parseInt(season, 10) || 1;
     var wantedEpisode = parseInt(episode, 10) || 1;
@@ -463,19 +568,41 @@
       }
     }
 
+    console.log(tag + " Sources in page data: " + sources.length);
     if (!sources.length) {
       console.log(tag + " No sources in page data");
       return [];
     }
 
-    var streams = await streamsFromSources(sources, display, pageUrl);
+    var streams = await streamsFromSources(sources, display, pageUrl, settings);
     console.log(tag + " Found " + streams.length + " streams");
     return streams;
   }
 
+  function onSettings() {
+    return [
+      { type: "header", label: "Selcukflix" },
+      {
+        type: "text",
+        key: "pichiveCookie",
+        label: "Pichive cf_clearance cookie",
+        placeholder: "cf_clearance=...",
+        description: "Pichive Cloudflare engeli icin opsiyonel. Tarayicida four.pichive.online acildiktan sonra cf_clearance cerezini buraya yapistir."
+      },
+      {
+        type: "text",
+        key: "pichiveProxy",
+        label: "Pichive proxy URL",
+        placeholder: "https://proxy.example/?url={url}",
+        description: "Pichive isteklerini proxy uzerinden gecirmek icin opsiyonel. {url} yerine hedef adres yerlestirilir; yoksa sonuna ?url=... eklenir."
+      }
+    ];
+  }
+
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { getStreams: getStreams };
+    module.exports = { getStreams: getStreams, onSettings: onSettings };
   } else {
     this.getStreams = getStreams;
+    this.onSettings = onSettings;
   }
 })();
