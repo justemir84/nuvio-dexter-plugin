@@ -473,7 +473,7 @@
     {
       "id": "selcukflix",
       "name": "Selcukflix",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Selcukflix.app; AES korumalı sayfa verisi, Pichive üzerinden film + dizi HLS",
       "filename": "providers/selcukflix.js",
       "supportedTypes": [
@@ -481,7 +481,7 @@
         "tv"
       ],
       "enabled": true,
-      "hasSettings": false,
+      "hasSettings": true,
       "formats": [
         "m3u8"
       ],
