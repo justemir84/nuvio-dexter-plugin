@@ -12,6 +12,8 @@
  *   alanlar diger kaynaklar varken listeden dusurulur.
  *   Knight/vaplayer ara sira timeout verir; bir kez yeniden denenir.
  *   Knight master playlist'indeki RESOLUTION'dan gercek kalite (1080p/720p) okunur.
+ *   Yalnizca 1080p ve uzeri kaynaklar listelenir; 720p/480p/360p ile
+ *   cozunurlugu dogrulanamayan "Auto" kaynaklar elenir.
  * Medya: ticket URL'leri UA ile 206 doner; Referer: https://thugtv.online/ (yine de eklenir).
  * Hermes-safe: yalniz Promise zincirleri, bagimlilik yok.
  */
@@ -298,7 +300,13 @@
             all.push(x.v);
           }
         });
-        if (!all.length) { console.log(tag + " No streams"); return []; }
+        // 1080p alti kaynaklari (720p/480p/360p) hic dogrulamaya sokma.
+        // "Auto" kalir; master playlist'ten gercek cozunurluk okunamazsa
+        // asagidaki son filtrede elenir.
+        all = all.filter(function (f) {
+          return f.q === "Auto" || qRank(f.q) >= 3;
+        });
+        if (!all.length) { console.log(tag + " No streams >= 1080p"); return []; }
         return pAll(all.map(function (f) { return verifyUrl(f.url); })).then(function (ver) {
           var verMap = {};
           ver.forEach(function (x) {
@@ -344,9 +352,12 @@
                 provider: "thugtv"
               };
             });
+            // Kullanici sadece 1080p ve uzerini istiyor. Cozunurlugu
+            // dogrulanamayan "Auto" kaynaklari da gosterme.
+            out = out.filter(function (x) { return qRank(x.quality) >= 3; });
             out.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
             out = out.slice(0, MAX_STREAMS);
-            console.log(tag + " Found " + out.length + " streams");
+            console.log(tag + " Found " + out.length + " streams >= 1080p");
             return out;
           });
         });
