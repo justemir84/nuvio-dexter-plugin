@@ -501,7 +501,7 @@
         "tv"
       ],
       "enabled": true,
-      "hasSettings": false,
+      "hasSettings": true,
       "formats": [
         "m3u8"
       ],
