@@ -1,15 +1,17 @@
 /**
- * diziyou - Diziyou (diziyou.one) provider for Nuvio
+ * justflix - Diziyou (diziyou.one) provider for Nuvio
  *
  * Akis:
  *   TMDB id -> TMDB basligi -> dogrudan slug veya /?s= aramasi
  *   -> /{base}-{s}-sezon-{e}-bolum/ (seri sayfasindaki baglantidan)
- *   -> /player/{id}.html -> <source src=".../play.m3u8">
+ *   -> /player/{id}_tr.html (Dublaj), /player/{id}.html (TR Altyazili),
+ *      /player/{id}_enSub.html (EN Altyazili) -> storage.diziyou.one .../play.m3u8
  *   -> master playlist (HLS m3u8) + <track> altyazilari
  *
  * Notlar:
  * - Site yalnizca dizi icerir (film yok); yalnizca tv desteklenir.
  * - Cookie/proxy gerektirmez; tum akis Node/fetch ile dogrudan calisir.
+ * - Dublaj ayri dosyadir (10551_tr), altyazili ayri (10551); ikisi de doner, dublaj once gelir.
  * - Hermes uyumlu: yalnizca Promise zinciri, dis bagimlilik yok.
  */
 (function () {
@@ -202,8 +204,39 @@
     return "360p";
   }
 
+  function resolvePlayer(playerUrl, epUrl, label, display, tag) {
+    return fetchText(playerUrl, { "User-Agent": UA, Referer: epUrl }).then(function (playerHtml) {
+      if (!playerHtml) return null;
+      var src = playerHtml.match(/<source[^>]+src="(https:\/\/storage\.diziyou\.one\/[^"]+\.m3u8)"/i);
+      if (!src) return null;
+      var master = src[1];
+      var subs = [];
+      var trackRe = /<track[^>]+src="([^"]+)"[^>]*label="([^"]*)"/gi, tm;
+      while ((tm = trackRe.exec(playerHtml)) !== null) {
+        subs.push({ url: tm[1], language: tm[2], name: tm[2], lang: tm[2], headers: { "User-Agent": UA, Referer: playerUrl } });
+      }
+      return fetchText(master, { "User-Agent": UA, Referer: playerUrl, Accept: "*/*" }).then(function (pl) {
+        if (!pl || pl.indexOf("#EXTM3U") === -1) return null;
+        var quality = qualityFromMaster(pl);
+        var headers = { "User-Agent": UA, Referer: playerUrl };
+        return {
+          name: "JustFlix " + label + " - " + quality,
+          title: display + " | " + quality + " [HLS] | " + label + (subs.length ? " | " + subs.length + " altyazi" : ""),
+          url: master,
+          quality: quality,
+          isM3u8: true,
+          type: "hls",
+          language: "tr",
+          provider: "justflix",
+          headers: headers,
+          subtitles: subs
+        };
+      });
+    });
+  }
+
   function getStreams(tmdbId, mediaType, season, episode, settings) {
-    var tag = "[diziyou]";
+    var tag = "[justflix]";
     var isTv = mediaType === "tv" || mediaType === "series";
     if (!isTv) { console.log(tag + " yalnizca dizi desteklenir"); return Promise.resolve([]); }
     var s = parseInt(season, 10) || 1, e = parseInt(episode, 10) || 1;
@@ -224,35 +257,25 @@
           if (!epHtml) { console.log(tag + " Bolum sayfasi alinamadi: " + epUrl); return []; }
           var iframe = epHtml.match(/<iframe[^>]+src="(https:\/\/www\.diziyou\.one\/player\/[^"]+)"/i);
           if (!iframe) { console.log(tag + " Player iframe bulunamadi"); return []; }
-          var playerUrl = iframe[1].split("?")[0];
-          return fetchText(playerUrl, { "User-Agent": UA, Referer: epUrl }).then(function (playerHtml) {
-            if (!playerHtml) { console.log(tag + " Player sayfasi alinamadi"); return []; }
-            var src = playerHtml.match(/<source[^>]+src="(https:\/\/storage\.diziyou\.one\/[^"]+\.m3u8)"/i);
-            if (!src) { console.log(tag + " m3u8 bulunamadi"); return []; }
-            var master = src[1];
-            var subs = [];
-            var trackRe = /<track[^>]+src="([^"]+)"[^>]*label="([^"]*)"/gi, tm;
-            while ((tm = trackRe.exec(playerHtml)) !== null) {
-              subs.push({ url: tm[1], language: tm[2], name: tm[2], lang: tm[2], headers: { "User-Agent": UA, Referer: playerUrl } });
-            }
-            return fetchText(master, { "User-Agent": UA, Referer: playerUrl, Accept: "*/*" }).then(function (pl) {
-              if (!pl || pl.indexOf("#EXTM3U") === -1) { console.log(tag + " playlist dogrulanamadi"); return []; }
-              var quality = qualityFromMaster(pl);
-              var headers = { "User-Agent": UA, Referer: playerUrl };
-              console.log(tag + " Kaynak bulundu: " + quality + " (" + subs.length + " altyazi)");
-              return [{
-                name: "Diziyou - " + quality,
-                title: display + " | " + quality + " [HLS]" + (subs.length ? " | " + subs.length + " altyazi" : ""),
-                url: master,
-                quality: quality,
-                isM3u8: true,
-                type: "hls",
-                language: "tr",
-                provider: "diziyou",
-                headers: headers,
-                subtitles: subs
-              }];
+          var basePlayer = iframe[1].split("?")[0];
+          var baseNoExt = basePlayer.replace(/\.html$/, "");
+          var variants = [
+            { url: baseNoExt + "_tr.html", label: "TR Dublaj" },
+            { url: baseNoExt + ".html", label: "TR Altyazili" },
+            { url: baseNoExt + "_enSub.html", label: "EN Altyazili" }
+          ];
+          var promises = variants.map(function (v) { return resolvePlayer(v.url, epUrl, v.label, display, tag); });
+          return Promise.all(promises).then(function (results) {
+            var out = [], seen = {};
+            results.forEach(function (r) {
+              if (!r) return;
+              var key = r.url;
+              if (seen[key]) return;
+              seen[key] = true;
+              out.push(r);
             });
+            console.log(tag + " Kaynak bulundu: " + out.length);
+            return out;
           });
         });
       });
