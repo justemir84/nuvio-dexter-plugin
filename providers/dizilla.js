@@ -2,17 +2,16 @@
  * dizilla - Dizilla (dizilla.la) provider for Nuvio
  *
  * Akis:
- *   TMDB id -> TMDB basligi -> /dizi/{slug} veya /ara?q= aramasi
- *   -> /{base}-{s}-sezon-{e}-bolum-c02 (JSON-LD'den veya slug insasindan)
- *   -> sources: iframe.php (Pichive) -> window.NP_CONFIG
- *   -> nm.php master playlist (HLS m3u8) + nsub.php altyazilar
+ *   TMDB -> /dizi/{slug} veya /ara?q= -> /{base}-{s}-sezon-{e}-bolum-c02
+ *   -> iframe.php (Pichive) -> window.NP_CONFIG -> nm.php (m3u8)
  *
  * Notlar:
- * - Site sadece dizi icerir (film yok); bu yuzden yalnizca tv desteklenir.
- * - Pichive, kisa UA'yi Cloudflare blokluyor; tam Chrome/Mobile UA sart.
- * - four.pichive.online calisir; pichive.online PUB+ kaynaklari
- *   cogu bolumde "Video bulunamadi" doner ve atlanir.
- * - Hermes uyumlu: async/await yok, yalnizca Promise zinciri.
+ * - Site sadece dizi icerir; yalnizca tv desteklenir.
+ * - Pichive Cloudflare: serge TLS parmak izi Node/fetch'i bloklar (403).
+ *   Selcukflix ile ayni cozum: pichiveCookie (cf_clearance) ve
+ *   pichiveProxy ayarlari. Tarayicida four.pichive.online acildiktan
+ *   sonra cf_clearance cakisini buraya yapistirin.
+ * - Hermes uyumlu: Promise zinciri, async/await yok.
  */
 (function () {
   "use strict";
@@ -49,6 +48,21 @@
       });
   }
 
+  function fetchPichive(url, headers, settings) {
+    settings = getSettings(settings);
+    var target = url;
+    var proxy = settings.pichiveProxy ? String(settings.pichiveProxy).trim() : "";
+    if (proxy) {
+      target = proxy.indexOf("{url}") !== -1
+        ? proxy.replace("{url}", encodeURIComponent(url))
+        : proxy + (proxy.indexOf("?") !== -1 ? "&" : "?") + "url=" + encodeURIComponent(url);
+    }
+    var finalHeaders = {};
+    Object.keys(headers || {}).forEach(function (k) { finalHeaders[k] = headers[k]; });
+    if (settings.pichiveCookie) finalHeaders.Cookie = String(settings.pichiveCookie).trim();
+    return fetchText(target, finalHeaders);
+  }
+
   function cleanText(html) {
     return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -62,17 +76,13 @@
   }
 
   var TR_MAP = {
-    "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ğ": "g", "Ğ": "g",
-    "ü": "u", "Ü": "u", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
-    "â": "a", "Â": "a", "î": "i", "Î": "i", "û": "u", "Û": "u",
-    "é": "e", "è": "e", "ê": "e", "á": "a", "à": "a", "ä": "a",
-    "å": "a", "ñ": "n", "ø": "o", "æ": "ae", "ß": "ss",
-    "'": "", "’": "", "&": " ve "
+    "ı":"i","İ":"i","ş":"s","Ş":"s","ğ":"g","Ğ":"g","ü":"u","Ü":"u","ö":"o","Ö":"o","ç":"c","Ç":"c",
+    "â":"a","Â":"a","î":"i","Î":"i","û":"u","Û":"u","é":"e","è":"e","ê":"e","á":"a","à":"a","ä":"a",
+    "å":"a","ñ":"n","ø":"o","æ":"ae","ß":"ss","'":"","’":"","&":" ve "
   };
 
   function slugify(title) {
-    var src = String(title || "");
-    var ascii = "";
+    var src = String(title || ""), ascii = "";
     for (var i = 0; i < src.length; i++) {
       var ch = src.charAt(i);
       ascii += TR_MAP[ch] !== undefined ? TR_MAP[ch] : ch;
@@ -89,8 +99,7 @@
       "?api_key=" + encodeURIComponent(apiKey) + "&language=tr-TR&append_to_response=alternative_titles";
     return fetchText(url, { "User-Agent": UA, Accept: "application/json" }).then(function (txt) {
       if (!txt) return null;
-      var d;
-      try { d = JSON.parse(txt); } catch (e) { return null; }
+      var d; try { d = JSON.parse(txt); } catch (e) { return null; }
       if (!d || d.success === false) return null;
       var main = d.name || "", original = d.original_name || "";
       var altList = (d.alternative_titles && d.alternative_titles.results) || [];
@@ -116,16 +125,13 @@
       if (!html) return [];
       var re = /<a href="\/dizi\/([^"]+)" class="pcard"[\s\S]*?<span class="mvk-t">([^<]+)<\/span><span class="mvk-m[^"]*">(\d{4})/g;
       var out = [], m;
-      while ((m = re.exec(html)) !== null) {
-        out.push({ slug: m[1], title: decodeEntities(cleanText(m[2])), year: m[3] });
-      }
+      while ((m = re.exec(html)) !== null) out.push({ slug: m[1], title: decodeEntities(cleanText(m[2])), year: m[3] });
       return out;
     });
   }
 
   function score(item, titles, year) {
-    var itemTitle = norm(item.title);
-    var best = 0;
+    var itemTitle = norm(item.title), best = 0;
     for (var i = 0; i < titles.length; i++) {
       var t = norm(titles[i]);
       if (!t || !itemTitle) continue;
@@ -178,19 +184,15 @@
   }
 
   function findEpisodeUrl(seriesHtml, baseTitle, season, episode) {
-    // 1) JSON-LD episode listesi: https://dizilla.la/{base-...}-{s}-sezon-{e}-bolum-cNN
     var re = /https:\/\/dizilla\.la\/([a-z0-9\-]+-sezon-(\d+)-bolum-c\d+)/g;
     var m, found = null;
     while ((m = re.exec(String(seriesHtml))) !== null) {
       if (parseInt(m[2], 10) === episode) {
-        // slug icindeki "-{s}-sezon-" kismini kontrol et
-        var path = m[1];
-        var sm = path.match(/-(\d+)-sezon-\d+-bolum-/);
-        if (sm && parseInt(sm[1], 10) === season) { found = path; break; }
+        var sm = m[1].match(/-(\d+)-sezon-\d+-bolum-/);
+        if (sm && parseInt(sm[1], 10) === season) { found = m[1]; break; }
       }
     }
     if (found) return found;
-    // 2) slug insasi
     var base = slugify(baseTitle);
     if (base) return base + "-" + season + "-sezon-" + episode + "-bolum-c02";
     return null;
@@ -200,8 +202,7 @@
     var re = /https:\/\/[a-z0-9.\-]*pichive\.online\/iframe\.php\?v=[a-f0-9]+/gi;
     var seen = {}, out = [], m;
     while ((m = re.exec(String(epHtml))) !== null) {
-      var u = m[0];
-      if (!seen[u]) { seen[u] = true; out.push(u); }
+      if (!seen[m[0]]) { seen[m[0]] = true; out.push(m[0]); }
     }
     return out;
   }
@@ -213,8 +214,7 @@
   }
 
   function qualityFromMaster(master) {
-    var best = 0;
-    var re = /RESOLUTION=(\d+)x(\d+)/g, mm;
+    var best = 0, re = /RESOLUTION=(\d+)x(\d+)/g, mm;
     while ((mm = re.exec(String(master || ""))) !== null) {
       var side = Math.min(parseInt(mm[1], 10), parseInt(mm[2], 10));
       if (side > best) best = side;
@@ -227,16 +227,16 @@
     return "360p";
   }
 
-  function resolveIframe(iframeUrl, epUrl) {
+  function resolveIframe(iframeUrl, epUrl, settings) {
     var origin;
     try { origin = new URL(iframeUrl).origin; } catch (e) { return Promise.resolve(null); }
-    return fetchText(iframeUrl, {
+    return fetchPichive(iframeUrl, {
       "User-Agent": UA,
       Referer: epUrl,
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8"
-    }).then(function (html) {
-      if (!html || /Attention Required|Video bulunamadı/i.test(html)) return null;
+    }, settings).then(function (html) {
+      if (!html || /Attention Required|Video bulunamadi|Video bulunamadı/i.test(html)) return null;
       var cfg = parseNPConfig(html);
       if (!cfg || !cfg.sources || !cfg.sources.length || !cfg.sources[0].master) return null;
       var master = cfg.sources[0].master;
@@ -244,7 +244,7 @@
       (cfg.subtitles || []).forEach(function (s) {
         if (s && s.url) subs.push({ url: s.url, language: s.label || s.lang || "tr", name: s.label || s.lang || "tr", lang: s.label || s.lang || "tr", headers: { "User-Agent": UA, Referer: iframeUrl } });
       });
-      return fetchText(master, { "User-Agent": UA, Referer: iframeUrl, Accept: "*/*" }).then(function (pl) {
+      return fetchPichive(master, { "User-Agent": UA, Referer: iframeUrl, Accept: "*/*" }, settings).then(function (pl) {
         if (!pl || pl.indexOf("#EXTM3U") === -1) return null;
         return { master: master, iframeUrl: iframeUrl, origin: origin, quality: qualityFromMaster(pl), subtitles: subs, playlist: pl };
       });
@@ -255,6 +255,7 @@
     var tag = "[dizilla]";
     var isTv = mediaType === "tv" || mediaType === "series";
     if (!isTv) { console.log(tag + " yalnizca dizi desteklenir"); return Promise.resolve([]); }
+    settings = getSettings(settings);
     var s = parseInt(season, 10) || 1, e = parseInt(episode, 10) || 1;
     var apiKey = getTmdbKey(settings);
     return tmdbInfo(tmdbId, apiKey).then(function (info) {
@@ -274,17 +275,16 @@
           var iframes = extractSources(epHtml);
           console.log(tag + " Bulunan iframe kaynagi: " + iframes.length);
           if (!iframes.length) return [];
-          var promises = iframes.map(function (u) { return resolveIframe(u, epUrl); });
+          var promises = iframes.map(function (u) { return resolveIframe(u, epUrl, settings); });
           return Promise.all(promises).then(function (resolved) {
             var out = [];
-            resolved.forEach(function (r, idx) {
+            resolved.forEach(function (r) {
               if (!r) return;
               var headers = { "User-Agent": UA, Referer: r.iframeUrl, Origin: r.origin };
-              var extras = [];
-              if (r.subtitles.length) extras.push(r.subtitles.length + " altyazi");
+              if (settings.pichiveCookie) headers.Cookie = String(settings.pichiveCookie).trim();
               out.push({
                 name: "Dizilla - " + r.quality,
-                title: display + " | " + r.quality + " [HLS]" + (extras.length ? " | " + extras.join(", ") : ""),
+                title: display + " | " + r.quality + " [HLS]" + (r.subtitles.length ? " | " + r.subtitles.length + " altyazi" : ""),
                 url: r.master,
                 quality: r.quality,
                 isM3u8: true,
@@ -306,7 +306,25 @@
     });
   }
 
-  function onSettings() { return []; }
+  function onSettings() {
+    return [
+      { type: "header", label: "Dizilla" },
+      {
+        type: "text",
+        key: "pichiveCookie",
+        label: "Pichive cf_clearance cookie",
+        placeholder: "cf_clearance=...",
+        description: "Pichive Cloudflare engeli icin opsiyonel. Tarayicida four.pichive.online acildiktan sonra cf_clearance cerezini buraya yapistir."
+      },
+      {
+        type: "text",
+        key: "pichiveProxy",
+        label: "Pichive proxy URL",
+        placeholder: "https://proxy.example/?url={url}",
+        description: "Pichive isteklerini proxy uzerinden gecirmek icin opsiyonel. {url} yerine hedef adres yerlestirilir."
+      }
+    ];
+  }
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = { getStreams: getStreams, onSettings: onSettings };
