@@ -495,7 +495,7 @@
       "id": "dizilla",
       "name": "Dizilla",
       "description": "dizilla.la - /dizi/ sayfalarından bölüm kaynakları, Pichive (four.pichive.online) HLS, Türkçe dublaj/altyazı",
-      "version": "1.0.1",
+      "version": "1.0.0",
       "filename": "providers/dizilla.js",
       "supportedTypes": [
         "tv"
@@ -511,6 +511,5 @@
       ],
       "logo": "https://www.google.com/s2/favicons?domain=dizilla.la&sz=128"
     }
-
   ]
 }
