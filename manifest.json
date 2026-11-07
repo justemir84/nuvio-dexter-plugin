@@ -492,11 +492,11 @@
       "logo": "https://www.google.com/s2/favicons?domain=ddizimom.net&sz=128"
     },
     {
-      "id": "diziyou",
-      "name": "Diziyou",
-      "description": "diziyou.one - /{slug}/ sayfalarından bölüm kaynakları, storage.diziyou.one HLS, Türkçe altyazı (cookie gerektirmez)",
-      "version": "1.0.0",
-      "filename": "providers/diziyou.js",
+      "id": "justflix",
+      "name": "JustFlix",
+      "description": "JustFlix - diziyou.one sayfalarından TR Dublaj + TR/EN altyazılı bölüm kaynakları, Türkçe dublaj destekler",
+      "version": "1.0.2",
+      "filename": "providers/justflix.js",
       "supportedTypes": [
         "tv"
       ],
@@ -511,6 +511,5 @@
       ],
       "logo": "https://www.google.com/s2/favicons?domain=diziyou.one&sz=128"
     }
-
   ]
 }
