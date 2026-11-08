@@ -331,21 +331,40 @@
     return out;
   }
 
+  async function fetchEmbedHtml(embedUrl, referer) {
+    try {
+      var response = await fetchTimeout(embedUrl, {
+        headers: { "User-Agent": UA, "Referer": referer || "" }
+      }, TIMEOUT);
+      if (!response.ok) throw new Error("bad status " + response.status);
+      var text = await response.text();
+      if (isChallenge(text)) throw new Error("challenge");
+      return text;
+    } catch (e) {
+      try {
+        var jinaText = await fetchJina(embedUrl);
+        if (jinaText) return jinaText;
+      } catch (e2) {}
+      throw e;
+    }
+  }
+
   async function resolveRapidvid(embedUrl) {
     var origin = new URL(embedUrl).origin;
-    var response = await fetchTimeout(embedUrl, {
-      headers: { "User-Agent": UA, "Referer": origin + "/" }
-    }, TIMEOUT);
-    if (!response.ok) return null;
-    var html = await response.text();
+    var html;
+    try { html = await fetchEmbedHtml(embedUrl, origin + "/"); }
+    catch (e) { return null; }
+    if (!html) return null;
 
     var p8 = html.match(/window\._p8\s*=\s*['"]([^'"]+)['"]/);
     if (p8) {
       var config = null;
       try { config = JSON.parse(decodeImgzBlob(p8[1])); } catch (e) {}
       if (config) {
-        var master = config.cm || config.tm;
-        if (master && /^https?:\/\//i.test(master)) {
+        var masters = [];
+        if (config.cm && /^https?:\/\//i.test(config.cm)) masters.push(config.cm);
+        if (config.tm && /^https?:\/\//i.test(config.tm) && config.tm !== config.cm) masters.push(config.tm);
+        if (masters.length) {
           var subtitles = [];
           (Array.isArray(config.ct) ? config.ct : []).forEach(function (track) {
             if (track && track.file && /^https?:\/\//i.test(track.file)) {
@@ -356,7 +375,9 @@
               });
             }
           });
-          return { url: master, referer: origin + "/", origin: origin, subtitles: subtitles };
+          return masters.map(function (master) {
+            return { url: master, referer: origin + "/", origin: origin, subtitles: subtitles };
+          });
         }
       }
     }
@@ -371,12 +392,7 @@
       if (sourcesMatch) videoUrl = matchMediaUrl(sourcesMatch[1]);
     }
     if (!videoUrl || !/^https?:\/\//i.test(videoUrl)) return null;
-    return {
-      url: videoUrl,
-      referer: origin + "/",
-      origin: origin,
-      subtitles: parseJwSetupTracks(html)
-    };
+    return [{ url: videoUrl, referer: origin + "/", origin: origin, subtitles: parseJwSetupTracks(html) }];
   }
 
   async function resolveVidmoly(embedUrl) {
@@ -388,7 +404,7 @@
     var html = await response.text();
     var match = html.match(/file:\s*['"]([^'"]+\.m3u8[^'"]*)['"]/i);
     if (!match) return null;
-    return { url: match[1], referer: origin + "/", origin: origin, subtitles: [] };
+    return [{ url: match[1], referer: origin + "/", origin: origin, subtitles: [] }];
   }
 
   function unpackPacked(html) {
@@ -437,12 +453,12 @@
         if (fileMatch) {
           var decoded = decodeHexEscapes(fileMatch[1]);
           if (/^https?:\/\//i.test(decoded)) {
-            return { url: decoded, referer: origin + "/", origin: origin, subtitles: [] };
+            return [{ url: decoded, referer: origin + "/", origin: origin, subtitles: [] }];
           }
         }
         var media = matchMediaUrl(unpacked);
         if (media && /^https?:\/\//i.test(media)) {
-          return { url: media, referer: origin + "/", origin: origin, subtitles: [] };
+          return [{ url: media, referer: origin + "/", origin: origin, subtitles: [] }];
         }
       }
     }
@@ -539,8 +555,11 @@
       var descriptor = descriptors[d];
       var embedUrl = decodeScxEntry(descriptor.enc);
       if (!embedUrl) continue;
-      var resolved = null;
-      try { resolved = await resolveEmbed(embedUrl); } catch (e) {}
+      var resolvedList = null;
+      try { resolvedList = await resolveEmbed(embedUrl); } catch (e) {}
+      if (!Array.isArray(resolvedList)) resolvedList = resolvedList ? [resolvedList] : [];
+      for (var r = 0; r < resolvedList.length; r++) {
+      var resolved = resolvedList[r];
       if (!resolved || !resolved.url || seen[resolved.url]) continue;
       seen[resolved.url] = true;
 
@@ -568,6 +587,7 @@
         subtitles: resolved.subtitles || [],
         provider: "fullhdfilmizlesene"
       });
+      }
     }
 
     streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
