@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.34",
+  "version": "2.3.35",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom ve Diziyou sağlayıcıları",
   "scrapers": [
     {
@@ -454,7 +454,7 @@
     {
       "id": "fullhdfilmizlesene",
       "name": "FullHDFilmizlesene",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "FullHDFilmizlesene.now; film, RapidVid/Vidmoly/Vidmoxy HLS, Türkçe dublaj/altyazı",
       "filename": "providers/fullhdfilmizlesene.js",
       "supportedTypes": [
