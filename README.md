@@ -41,7 +41,6 @@ Bu depo, Nuvio uygulamasının **Plugins** bölümüne eklenen bir sağlayıcı 
 | Diziyou | Dizi | HLS (m3u8) | diziyou.one; storage.diziyou.one üzerinden bölüm kaynakları, Türkçe altyazı; cookie gerekmez |
 | FullHDFilmizlesene | Film | HLS (m3u8) | FullHDFilmizlesene.now; RapidVid/Vidmoly/Vidmoxy kaynakları, Türkçe dublaj/altyazı |
 | 4KHD Club | Film + Dizi | MKV | 4K-HD.Club arşivi; 4K REMUX indirme bağlantıları ve medya bilgileri (varsayılan olarak devre dışı) |
-| Febbox | Film + Dizi | MP4 / MKV | Febbox / SuperStream kaynakları; Febbox token gerekir |
 
 ## Kaynak listesi ve oynatma
 
