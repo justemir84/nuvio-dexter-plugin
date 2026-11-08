@@ -384,7 +384,7 @@
     {
       "id": "febbox",
       "name": "Febbox",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Febbox / SuperStream kaynakları; Febbox token gerekir.",
       "filename": "providers/febbox.js",
       "supportedTypes": [
