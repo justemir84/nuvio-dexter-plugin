@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.33",
+  "version": "2.3.34",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom ve Diziyou sağlayıcıları",
   "scrapers": [
     {
@@ -330,7 +330,7 @@
         "movie",
         "tv"
       ],
-      "enabled": false,
+      "enabled": true,
       "hasSettings": false,
       "formats": [
         "mkv"
