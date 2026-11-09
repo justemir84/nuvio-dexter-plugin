@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.39",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou ve Netflix sağlayıcıları",
+  "version": "2.3.40",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou ve NetMirror sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -495,11 +495,11 @@
       "logo": "https://www.google.com/s2/favicons?domain=diziyou.one&sz=128"
     },
     {
-      "id": "Netflix",
-      "name": "Netflix",
-      "description": "Netflix - Netflix/Prime/Hotstar/Disney HLS kaynakları, çoklu ses (TR dublaj dahil) + çoklu altyazı",
+      "id": "netmirror",
+      "name": "NetMirror",
+      "description": "NetMirror - Netflix/Prime/Hotstar/Disney HLS kaynakları, çoklu ses (TR dublaj dahil) + çoklu altyazı",
       "version": "1.0.0",
-      "filename": "providers/Netflix.js",
+      "filename": "providers/netmirror.js",
       "supportedTypes": [
         "movie",
         "tv"
