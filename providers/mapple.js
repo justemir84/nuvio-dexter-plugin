@@ -12,7 +12,7 @@
   var TMDB_BASE = "https://api.themoviedb.org/3";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   // Site/API (mapple.fun) rejects Android UA with Cloudflare 403 -> desktop UA.
-  var WEB_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36";
+  var WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   // Playlist proxy rejects desktop/Node TLS with 403 -> Android/ExoPlayer style UA.
   var PLAY_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
   var TIMEOUT = 15000;
