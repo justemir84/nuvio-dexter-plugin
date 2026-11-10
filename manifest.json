@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.41",
+  "version": "2.3.42",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou ve NetMirror ve justanime sağlayıcıları",
   "scrapers": [
     {
@@ -518,7 +518,7 @@
     {
       "id": "justanime",
       "name": "justanime",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "justanime anime bölümleri ve anime filmleri; 4K'ya kadar HLS, Türkçe altyazı",
       "filename": "providers/justanime.js",
       "supportedTypes": [
