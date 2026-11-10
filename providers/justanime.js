@@ -1,5 +1,5 @@
 /**
- * anizume - Anizume (anizume.com) provider for Nuvio
+ * justanime - Anizume (anizume.com) provider for Nuvio
  *
  * Akis:
  *   TMDB id -> TMDB basligi (tr) + alternatif basliklar + yil
@@ -10,8 +10,13 @@
  *   -> video.anizume.com master.m3u8 -> kalite (RESOLUTION) + altyazi (tek VTT)
  *
  * Notlar:
+ * - Arama API'si substring tabanli ve noktalama hassas; anime basliklari
+ *   TMDB'de Japonca anahtar/alternatif olarak gelebilir. Bu yuzden tum aday
+ *   basliklar sirayla denenir (tam arama, slug ile dogrudan sayfa, onecek).
  * - master playlist 480p-2160p arasi varyantlar icerir; en yuksek cozunurluk
- *   kalite etiketi olarak kullanilir.
+ *   kalite etiketi olarak kullanilir. Site kendi oynaticisinda 2K/4K secimini
+ *   misafirlere kilitler ama HLS dosyalari herkese aciktir; bu yuzden hesap
+ *   girmeden 4K calinabilir.
  * - Altyazilar HLS icinde tek bir VTT dosyasidir; altyazi playlisti cozulur.
  * - Var olmayan bolum/film sayfasi 404 doner; bos liste ile geri donulur.
  * - video.anizume.com kaynaklarina Referer/Origin gerekir.
@@ -134,7 +139,7 @@
       var original = isTv ? (d.original_name || "") : (d.original_title || "");
       var altList = (d.alternative_titles && (isTv ? d.alternative_titles.results : d.alternative_titles.titles)) || [];
       var altTitles = [];
-      for (var i = 0; i < altList.length && altTitles.length < 4; i++) {
+      for (var i = 0; i < altList.length && altTitles.length < 6; i++) {
         var t = altList[i] && altList[i].title;
         if (t && norm(t) !== norm(main) && altTitles.indexOf(t) === -1) altTitles.push(t);
       }
@@ -207,33 +212,86 @@
     return { slug: slug, kind: isTv ? "anime" : "film", title: item.title };
   }
 
-  function trySlug(title, isTv) {
-    var slug = slugify(title);
-    if (!slug) return Promise.resolve(null);
-    var url = BASE + (isTv ? "/anime/" : "/film/") + slug;
-    return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" }).then(function (html) {
-      return html ? { slug: slug, kind: isTv ? "anime" : "film", title: title } : null;
-    });
+  // Arama API'si substring tabanli ve noktalama hassas; anime basliklari
+  // ozellikle TMDB'de Japonca anahtar ve alternatiflerde yer alabilir.
+  // Bu yuzden tum aday basliklari sirayla deniyoruz: tam arama, slug ile
+  // dogrudan sayfa, en son kisa oneceler.
+  var NON_LATIN_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+  function prefixQueries(title) {
+    var words = String(title || "").split(/\s+/).filter(Boolean);
+    var out = [];
+    if (words.length > 2) out.push(words.slice(0, 3).join(" "));
+    if (words.length > 1) out.push(words.slice(0, 2).join(" "));
+    return out;
   }
 
   function findTarget(titles, isTv) {
+    var latin = [], other = [];
+    for (var i = 0; i < titles.length; i++) {
+      var t = titles[i];
+      if (!t) continue;
+      if (NON_LATIN_RE.test(t)) other.push(t); else latin.push(t);
+    }
+    var ordered = latin.concat(other).slice(0, 6);
+
     function pick(data) {
       var list = data && (isTv ? data.animes : data.films);
-      var best = pickBest(list, titles);
-      return best ? targetFromItem(best, isTv) : null;
+      return pickBest(list, titles);
     }
 
-    return searchSite(titles[0]).then(function (data) {
-      var found = pick(data);
-      if (found) return found;
-      if (titles[1]) {
-        return searchSite(titles[1]).then(function (data2) {
-          var found2 = pick(data2);
-          return found2 || trySlug(titles[0], isTv);
+    function slugTarget(title) {
+      var slug = slugify(title);
+      return slug ? { slug: slug, url: BASE + (isTv ? "/anime/" : "/film/") + slug } : null;
+    }
+
+    function searchAll(idx, best) {
+      if (idx >= ordered.length) {
+        if (best && score(best, titles) >= 7) return Promise.resolve(targetFromItem(best, isTv));
+        return slugAll(0, null).then(function (found) {
+          if (found) return found;
+          if (best) return targetFromItem(best, isTv);
+          return prefixAll(0, 0, null);
         });
       }
-      return trySlug(titles[0], isTv);
-    });
+      return searchSite(ordered[idx]).then(function (data) {
+        var item = pick(data);
+        if (item) {
+          var s = score(item, titles);
+          if (!best || s > score(best, titles)) best = item;
+          if (s >= 7) return targetFromItem(best, isTv);
+        }
+        return searchAll(idx + 1, best);
+      });
+    }
+
+    function slugAll(idx, found) {
+      if (found) return Promise.resolve(found);
+      if (idx >= ordered.length) return Promise.resolve(null);
+      var target = slugTarget(ordered[idx]);
+      if (!target) return slugAll(idx + 1, null);
+      return fetchText(target.url, { "User-Agent": UA, Referer: BASE + "/" }).then(function (html) {
+        return slugAll(idx + 1, html ? { slug: target.slug, kind: isTv ? "anime" : "film", title: ordered[idx] } : null);
+      });
+    }
+
+    function prefixAll(idx, pIdx, best) {
+      if (idx >= ordered.length || idx >= 3) {
+        return Promise.resolve(best ? targetFromItem(best, isTv) : null);
+      }
+      var prefixes = prefixQueries(ordered[idx]);
+      if (pIdx >= prefixes.length) return prefixAll(idx + 1, 0, best);
+      return searchSite(prefixes[pIdx]).then(function (data) {
+        var item = pick(data);
+        if (item) {
+          var s = score(item, titles);
+          if (!best || s > score(best, titles)) best = item;
+        }
+        return prefixAll(idx, pIdx + 1, best);
+      });
+    }
+
+    return searchAll(0, null);
   }
 
   // --------------------------------------------------------------- sources
@@ -330,17 +388,17 @@
         var q = quality || "Auto";
         var title = display + " | " + q + " [HLS]" + (extras.length ? " | " + extras.join(", ") : "");
         return {
-          name: "Anizume - " + source.name + (quality ? " " + quality : ""),
+          name: "JustAnime - " + source.name + (quality ? " " + quality : ""),
           title: title,
           url: source.url,
           quality: quality || undefined,
           isM3u8: true,
           type: "hls",
           language: "tr",
-          provider: "anizume",
+          provider: "justanime",
           headers: headers,
           subtitles: subtitles,
-          behaviorHints: { bingeGroup: "anizume-" + slug }
+          behaviorHints: { bingeGroup: "justanime-" + slug }
         };
       });
     });
@@ -349,7 +407,7 @@
   // -------------------------------------------------------------- getStreams
 
   function getStreams(tmdbId, mediaType, season, episode, settings) {
-    var tag = "[anizume]";
+    var tag = "[justanime]";
     var isTv = mediaType === "tv" || mediaType === "series";
     var s = parseInt(season, 10) || 1;
     var e = parseInt(episode, 10) || 1;
@@ -361,9 +419,6 @@
         return [];
       }
 
-      var display = info.title + (info.year ? " (" + info.year + ")" : "");
-      if (isTv) display += " S" + s + "E" + e;
-
       var titles = [info.title, info.original].concat(info.alternatives || []);
       titles = titles.filter(function (t, i) { return t && titles.indexOf(t) === i; });
 
@@ -374,6 +429,11 @@
           console.log(tag + " Sayfa bulunamadi");
           return [];
         }
+
+        // Goruntulenen ad: site tarafindaki eslesen baslik (yoksa TMDB adi).
+        var displayTitle = target.title || info.title;
+        var display = displayTitle + (info.year ? " (" + info.year + ")" : "");
+        if (isTv) display += " S" + s + "E" + e;
         console.log(tag + " Sayfa: " + BASE + "/" + target.kind + "/" + target.slug);
 
         var pageUrl = isTv
