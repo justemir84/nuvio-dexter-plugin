@@ -352,7 +352,7 @@
   async function resolveRapidvid(embedUrl) {
     var origin = new URL(embedUrl).origin;
     var html;
-    try { html = await fetchEmbedHtml(embedUrl, origin + "/"); }
+    try { html = await fetchEmbedHtml(embedUrl, BASE + "/"); }
     catch (e) { return null; }
     if (!html) return null;
 
@@ -483,6 +483,9 @@
   }
 
   async function masterQuality(url, headers) {
+    var urlLower = String(url || "").toLowerCase();
+    var urlMatch = urlLower.match(/(?:^|\/|\.|-|_)(2160p|1440p|1080p|720p|480p|360p)(?:\/|\.|-|_|$|\?)/i);
+    if (urlMatch) return urlMatch[1];
     try {
       var response = await fetchTimeout(url, { headers: headers }, 8000);
       if (!response.ok) return "Auto";
