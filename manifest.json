@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.47",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou, NetMirror, justanime, Animexe ve Anizium sağlayıcıları",
+  "version": "2.3.48",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou, NetMirror, justanime, Animexe, Anizium ve Vidly sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -574,6 +574,27 @@
         "tr"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=anizium.co&sz=128"
+    },
+    {
+      "id": "vidly",
+      "name": "Vidly",
+      "version": "1.0.0",
+      "description": "Vidly.pro - film, dizi ve anime embed oynatıcı; TMDB/AniList ID ile, 4K'ya kadar",
+      "filename": "providers/vidly.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "mp4"
+      ],
+      "contentLanguage": [
+        "en",
+        "tr"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=vidly.pro&sz=128"
     }
 
   ]
