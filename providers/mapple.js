@@ -438,11 +438,13 @@
       if (su.indexOf("playback-unavailable") !== -1) return [];
       var streamUrl = absUrl(su);
       var fmt = String(sd.data.format || "hls").toLowerCase();
+      var fileName = String(sd.data.file_name || "");
+      var q = parseQuality(fileName);
       if (fmt !== "hls" && streamUrl.indexOf(".m3u8") === -1) {
         return [{
-          name: "Mapple [" + hoster.name + "]",
-          title: display + "\n" + fmt.toUpperCase(),
-          url: streamUrl, quality: "Auto", isM3u8: false, type: fmt,
+          name: "Mapple [" + hoster.name + "] - " + q,
+          title: display + "\n" + q + (extra ? " | " + extra : "") + " [" + fmt.toUpperCase() + "]",
+          url: streamUrl, quality: q, isM3u8: false, type: fmt,
           headers: pHeaders(), subtitles: subs, provider: "mapple"
         }];
       }
@@ -461,6 +463,16 @@
     });
   }
 
+  function parseQuality(v) {
+    var s = String(v || "").toLowerCase();
+    if (/2160|4k|uhd/.test(s)) return "2160p";
+    if (/1080|fhd/.test(s)) return "1080p";
+    if (/1440|2k/.test(s)) return "1440p";
+    if (/720/.test(s)) return "720p";
+    if (/480/.test(s)) return "480p";
+    if (/360/.test(s)) return "360p";
+    return "HD";
+  }
   function qRank(q) {
     q = String(q || "").toLowerCase();
     if (q === "auto") return 2.5;
@@ -493,7 +505,17 @@
       return stremioSubs(info.imdbId, type, s, e);
     }).then(function (ss) {
       subs = ss;
-      return getSession(tmdbId, type, tvSlug);
+      function trySession(attempt) {
+        return getSession(tmdbId, type, tvSlug).then(function (session) {
+          if (session) return session;
+          if (attempt < 2) {
+            console.log(tag + " Session retry " + (attempt + 1) + "...");
+            return trySession(attempt + 1);
+          }
+          return null;
+        });
+      }
+      return trySession(0);
     }).then(function (session) {
       if (!session) return [];
       var display = info.title + (info.year ? " (" + info.year + ")" : "");
