@@ -21,7 +21,7 @@
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TIMEOUT = 12000;
-  var MAX_W3 = 6;
+  var MAX_W3 = 8;
 
   function headers(referer) {
     var h = {
@@ -54,10 +54,11 @@
 
   function parseQuality(label) {
     var s = String(label || "").toLowerCase();
-    if (/2160p/.test(s) || /\b4k\b/.test(s)) return "2160p";
-    if (/1080p/.test(s)) return "1080p";
-    if (/720p/.test(s)) return "720p";
-    if (/480p/.test(s)) return "480p";
+    if (/2160p|2160\b|4k|uhd/.test(s)) return "2160p";
+    if (/1080p|1080\b|fhd/.test(s)) return "1080p";
+    if (/1440p|1440\b|2k/.test(s)) return "1440p";
+    if (/720p|720\b/.test(s)) return "720p";
+    if (/480p|480\b/.test(s)) return "480p";
     return "HD";
   }
 
@@ -344,6 +345,15 @@
     }).catch(function () { return null; });
   }
 
+  function resolveSkydropRetry(url, attempt) {
+    attempt = attempt || 0;
+    return resolveSkydrop(url).then(function (r) {
+      if (r) return r;
+      if (attempt < 1) return resolveSkydropRetry(url, attempt + 1);
+      return null;
+    });
+  }
+
   function isFileUrl(u) {
     u = String(u || "");
     if (new RegExp("skydrop\\.sbs|magiclinks\\.lol|" + SITE_RE + "|kmphotos\\.cv/(online|download99)\\.php|gofile\\.io|vikingfile\\.com|bzzhr\\.co|transfer\\.it").test(u)) return false;
@@ -368,16 +378,13 @@
         parsed.pixeldrain.slice(0, 1).forEach(function (pd) {
           jobs.push(Promise.resolve([{ url: pd, via: "Pixeldrain", quality: w3.quality, size: w3.size, label: w3.label }]));
         });
-        parsed.hubcloud.slice(0, 2).forEach(function (hc) {
-          jobs.push(resolveHubcloud(hc, w3.url, w3.quality, w3.size, w3.label));
-        });
         return Promise.all(jobs).then(function (arr) {
           var flat = [];
           arr.forEach(function (a) { flat = flat.concat(a); });
           if (flat.length) return flat;
           // last resort: skydrop (download.php -> /resolve/ -> /id/ -> /fetch/)
           if (allowSkydrop === false || !parsed.skydrop.length) return flat;
-          return resolveSkydrop(parsed.skydrop[0]).then(function (direct) {
+          return resolveSkydropRetry(parsed.skydrop[0]).then(function (direct) {
             return direct ? [{ url: direct, via: "Drive", quality: w3.quality, size: w3.size, label: w3.label }] : flat;
           });
         });
@@ -459,7 +466,7 @@
         var link = findEpisodeLink(html, episode);
         if (!link) return null;
         if (/skydrop\.sbs/.test(link)) {
-          return resolveSkydrop(link).then(function (direct) {
+          return resolveSkydropRetry(link).then(function (direct) {
             return direct ? { url: direct, via: "Skydrop" } : null;
           });
         }
@@ -561,7 +568,7 @@
         var chain = Promise.resolve([]);
         picked.forEach(function (pg) {
           chain = chain.then(function (acc) {
-            if (acc.length >= 2) return acc;
+            if (acc.length >= 3) return acc;
             return resolveEpisode(pg.url, wantE, ctx.detailUrl).then(function (got) {
               console.log(tag + " ep " + pg.quality + " -> " + (got && got.url ? "ok" : "fail"));
               if (got && got.url) {
@@ -584,7 +591,7 @@
             return w.season === null || w.season === wantS;
           });
           if (!packs.length) { console.log(tag + " No episode links / packs"); return []; }
-          var order = { "1080p": 0, "720p": 1, "2160p": 2, "480p": 3, "HD": 4 };
+          var order = { "2160p": 0, "1080p": 1, "1440p": 2, "720p": 3, "480p": 4, "HD": 5 };
           packs.sort(function (a, b) {
             return (order[a.quality] === undefined ? 5 : order[a.quality]) -
               (order[b.quality] === undefined ? 5 : order[b.quality]);
@@ -601,8 +608,8 @@
       }
       // movie: w3 links
       if (!parsed.w3.length) { console.log(tag + " No w3 links"); return []; }
-      // prefer 1080p/720p mid sizes first
-      var order = { "1080p": 0, "720p": 1, "2160p": 2, "480p": 3, "HD": 4 };
+      // prefer 4K first, then 1080p, 720p
+      var order = { "2160p": 0, "1080p": 1, "1440p": 2, "720p": 3, "480p": 4, "HD": 5 };
       parsed.w3.sort(function (a, b) {
         return (order[a.quality] === undefined ? 5 : order[a.quality]) -
           (order[b.quality] === undefined ? 5 : order[b.quality]);
