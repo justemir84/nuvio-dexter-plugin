@@ -443,7 +443,7 @@
       if (fmt !== "hls" && streamUrl.indexOf(".m3u8") === -1) {
         return [{
           name: "Mapple [" + hoster.name + "] - " + q,
-          title: display + "\n" + q + (extra ? " | " + extra : "") + " [" + fmt.toUpperCase() + "]",
+          title: display + "\n" + q + " [" + fmt.toUpperCase() + "]",
           url: streamUrl, quality: q, isM3u8: false, type: fmt,
           headers: pHeaders(), subtitles: subs, provider: "mapple"
         }];
