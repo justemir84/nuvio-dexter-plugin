@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.51",
+  "version": "2.3.52",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou, NetMirror, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -74,7 +74,7 @@
     {
       "id": "mapple",
       "name": "Mapple",
-      "version": "1.0.9",
+      "version": "1.1.0",
       "description": "Çok sunuculu HLS; PoW oturum doğrulama; mobil UA ile Cloudflare uyumlu",
       "filename": "providers/mapple.js",
       "supportedTypes": [
