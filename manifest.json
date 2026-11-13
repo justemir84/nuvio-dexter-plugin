@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.48",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou, NetMirror, justanime, Animexe, Anizium ve Vidly sağlayıcıları",
+  "version": "2.3.49",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou, NetMirror, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -595,6 +595,27 @@
         "tr"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=vidly.pro&sz=128"
+    },
+    {
+      "id": "play4u",
+      "name": "Play4u",
+      "version": "1.0.0",
+      "description": "Play4u.org - film ve dizi; 1080p+ HLS, çoklu ses (Hindi/English), IMDb ID ile",
+      "filename": "providers/play4u.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en",
+        "hi"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=play4u.org&sz=128"
     }
 
   ]
