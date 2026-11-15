@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.54",
+  "version": "2.3.55",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FullHDFilmizlesene, DiziMom, Diziyou, NetMirror, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -89,6 +89,18 @@
       "contentLanguage": [
         "en"
       ]
+    },
+    {
+      "id": "mapple2",
+      "name": "Mapple 2",
+      "version": "1.0.0",
+      "description": "Mapple ikinci kaynak havuzu (Hera, Apollo, Hermes vb.)",
+      "filename": "providers/mapple2.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["m3u8"],
+      "contentLanguage": ["en"]
     },
     {
       "id": "atlantic",
@@ -422,6 +434,26 @@
       ]
     },
     {
+      "id": "hdfilmcehennemiland",
+      "name": "HDFilmCehennemi (land)",
+      "version": "1.0.0",
+      "description": "HDFilmCehennemi.land - film ve dizi; HLS, Türkçe dublaj/altyazı",
+      "filename": "providers/hdfilmcehennemiland.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "tr"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.land&sz=128"
+    },
+    {
       "id": "dizibal",
       "name": "DiziBal",
       "description": "dizibal.org - film ve diziler icin HLS kaynaklari (Turkce dublaj/altyazi)",
@@ -514,6 +546,26 @@
         "tr"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=netmirror.one&sz=128"
+    },
+    {
+      "id": "anihub",
+      "name": "AniHub",
+      "version": "1.0.0",
+      "description": "AniHub.com.tr - anime bölümleri ve anime filmleri; 4K'ya kadar HLS (token), Türkçe altyazı",
+      "filename": "providers/anihub.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "tr"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=anihub.com.tr&sz=128"
     },
     {
       "id": "justanime",
