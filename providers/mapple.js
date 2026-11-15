@@ -21,21 +21,9 @@
     { name: "Zeus", key: "mapple" },
     { name: "Poseidon", key: "s25" },
     { name: "Athena", key: "s2" },
-    { name: "Hera", key: "s4" },
-    { name: "Persephone", key: "s12" },
-    { name: "Apollo", key: "s19" },
-    { name: "Artemis", key: "s13" },
-    { name: "Hermes", key: "s26" },
-    { name: "Ares", key: "s24" },
-    { name: "Aphrodite", key: "s6" },
     { name: "Hephaestus", key: "s15" },
-    { name: "Demeter", key: "s7" },
-    { name: "Dionysus", key: "s8" },
-    { name: "Hestia", key: "s3" },
-    { name: "Hades", key: "s16" },
-    { name: "Nike", key: "s5" },
     { name: "Atlas", key: "s1" },
-    { name: "Prometheus", key: "s10" }
+    { name: "Hades", key: "s16" }
   ];
 
   var LANGS = {
@@ -443,7 +431,7 @@
       if (fmt !== "hls" && streamUrl.indexOf(".m3u8") === -1) {
         return [{
           name: "Mapple [" + hoster.name + "] - " + q,
-          title: display + "\n" + q + " [" + fmt.toUpperCase() + "]",
+          title: display + "\n" + q + (extra ? " | " + extra : "") + " [" + fmt.toUpperCase() + "]",
           url: streamUrl, quality: q, isM3u8: false, type: fmt,
           headers: pHeaders(), subtitles: subs, provider: "mapple"
         }];
