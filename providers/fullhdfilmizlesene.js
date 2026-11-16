@@ -1,606 +1,690 @@
 /**
- * fullhdfilmizlesene - FullHDFilmizlesene provider for Nuvio
- * Flow: TMDB -> /autocomplete/q.php -> /film/<slug>/ -> var scx
- *       -> ROT13 + base64 embed URL -> RapidVid/Vidmoly/Vidmoxy -> HLS
+ * fullhdfilmizlesene - FullHDFilmizlesene (fullhdfilmizlesene.co) provider for Nuvio
  *
- * The site is Cloudflare-protected. Direct fetch works in Turkey; when it
- * returns a challenge we retry the same URL through r.jina.ai (HTML mode).
- * The movie page embeds sources in `var scx = {...}`; each entry is
- * base64(rot13(url)). RapidVid (imgz) masters are direct HLS and do not need
- * a token.
+ * Flow:
+ *   TMDB id -> TMDB basligi (tr) + alternatif basliklar + yil
+ *   -> FullHDFilmizlesene /?s=  (film arama sonuclari)
+ *   -> /film/{slug}/  (film sayfasi, JSON-LD veya HTML icinde embed_player_url_1)
+ *   -> /dizi/{slug}/sezon-{s}/bolum-{e}/  (bolum sayfasi)
+ *   -> embed_player_url_1 (vidmixi / fastplay vb. embed URL)
+ *   -> embed sayfasi -> JW Player / video URL (m3u8)
  *
- * Hermes-safe: Promise chains / async-await, no external deps.
+ * Notlar:
+ * - Site Cloudflare korumali; direk fetch genellikle calisir ancak bazen engellenebilir.
+ * - Arama sayfasi HTML'dir; JSON değil. Basit HTML parse kullaniliyor.
+ * - embed_player_url_1 sayfa HTML'sinde bulunur (genelde JSON-LD veya script icinde).
+ * - Videolar genelde vidmixi / fastplay gibi embed üzerinden calisir.
+ * - Hermes uyumlu: async/await yok, Promise zinciri kullaniliyor.
  */
 (function () {
   "use strict";
 
-  var BASE = "https://www.fullhdfilmizlesene.now";
-  var JINA = "https://r.jina.ai/http://";
+  var BASE = "https://fullhdfilmizlesene.co";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-  var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
-  var TIMEOUT = 12000;
-  var JINA_TIMEOUT = 25000;
-  var MAX_SOURCES = 8;
+  var TMDB_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
+  var TIMEOUT = 20000;
 
-  var SITE_HEADERS = {
-    "User-Agent": UA,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
-    "Referer": BASE + "/"
-  };
+  function getSettings(settings) {
+    if (typeof SCRAPER_SETTINGS !== "undefined" && SCRAPER_SETTINGS) return SCRAPER_SETTINGS;
+    return settings || {};
+  }
 
-  function rot13(text) {
-    return String(text || "").replace(/[a-z]/gi, function (ch) {
-      var base = ch <= "Z" ? 65 : 97;
-      return String.fromCharCode(((ch.charCodeAt(0) - base + 13) % 26) + base);
+  function getTmdbKey(settings) {
+    var s = getSettings(settings);
+    return s.tmdbApiKey || (typeof TMDB_API_KEY !== "undefined" ? TMDB_API_KEY : "") || TMDB_KEY_FALLBACK;
+  }
+
+  function fetchText(url, headers) {
+    var opts = { headers: headers || { "User-Agent": UA } };
+    var timer = null;
+    var timeout = new Promise(function (_, reject) {
+      timer = setTimeout(function () { reject(new Error("timeout")); }, TIMEOUT);
     });
+    return Promise.race([fetch(url, opts), timeout])
+      .then(function (res) {
+        if (timer) clearTimeout(timer);
+        if (!res || !res.ok) return null;
+        return res.text();
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        return null;
+      });
   }
 
-  function base64ToBytes(input) {
-    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
-    var str = String(input || "").replace(/[^A-Za-z0-9\+\/=]/g, "");
-    var bytes = [];
-    for (var i = 0; i < str.length;) {
-      var e1 = chars.indexOf(str.charAt(i++));
-      var e2 = chars.indexOf(str.charAt(i++));
-      var e3 = chars.indexOf(str.charAt(i++));
-      var e4 = chars.indexOf(str.charAt(i++));
-      bytes.push((e1 << 2) | (e2 >> 4));
-      if (e3 !== 64) bytes.push(((e2 & 15) << 4) | (e3 >> 2));
-      if (e4 !== 64) bytes.push(((e3 & 3) << 6) | e4);
-    }
-    return bytes;
-  }
-
-  function utf8Decode(bytes) {
-    if (typeof TextDecoder !== "undefined") {
-      try { return new TextDecoder("utf-8").decode(new Uint8Array(bytes)); } catch (e) {}
-    }
-    var out = "", i = 0;
-    while (i < bytes.length) {
-      var b = bytes[i++];
-      if (b < 0x80) out += String.fromCharCode(b);
-      else if (b < 0xe0) out += String.fromCharCode(((b & 31) << 6) | (bytes[i++] & 63));
-      else if (b < 0xf0) out += String.fromCharCode(((b & 15) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63));
-      else {
-        var cp = ((b & 7) << 18) | ((bytes[i++] & 63) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63);
-        cp -= 0x10000;
-        out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
-      }
-    }
-    return out;
-  }
-
-  function base64DecodeUtf8(input) {
-    return utf8Decode(base64ToBytes(input));
+  function fetchJson(url, headers) {
+    return fetchText(url, headers).then(function (txt) {
+      if (!txt) return null;
+      try { return JSON.parse(txt); } catch (e) { return null; }
+    });
   }
 
   function decodeEntities(text) {
-    return String(text || "")
-      .replace(/&quot;/g, '"').replace(/&#34;/g, '"')
-      .replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
-      .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    var s = String(text || "");
+    s = s.replace(/&#x([0-9a-f]+);/gi, function (_, hex) { return String.fromCharCode(parseInt(hex, 16)); });
+    s = s.replace(/&#(\d+);/g, function (_, dec) { return String.fromCharCode(parseInt(dec, 10)); });
+    return s
+      .replace(/&quot;/g, '"')
+      .replace(/&#0*39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
       .replace(/&amp;/g, "&");
   }
 
-  function normalize(text) {
-    return String(text || "")
-      .toLowerCase()
-      .replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g")
-      .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c")
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
+  function norm(text) {
+    return String(text || "").toLowerCase().replace(/[^a-z0-9çğıöşü]+/g, " ").replace(/\s+/g, " ").trim();
   }
 
-  function titleSimilarity(a, b) {
-    var ta = normalize(a).split(" ").filter(Boolean);
-    var tb = normalize(b).split(" ").filter(Boolean);
-    if (!ta.length || !tb.length) return 0;
-    var setB = {};
-    tb.forEach(function (w) { setB[w] = true; });
-    var hits = 0;
-    ta.forEach(function (w) { if (setB[w]) hits++; });
-    return hits / (ta.length + tb.length - hits);
-  }
-
-  function isChallenge(text) {
-    return /Just a moment|cf-browser-verification|Attention Required|cf-error-details/i.test(String(text || ""));
-  }
-
-  function fetchTimeout(url, options, timeout) {
-    var timer = null;
-    var timeoutPromise = new Promise(function (_, reject) {
-      timer = setTimeout(function () { reject(new Error("Timeout")); }, timeout || TIMEOUT);
-    });
-    return Promise.race([fetch(url, options || {}), timeoutPromise]).then(function (res) {
-      if (timer) clearTimeout(timer);
-      return res;
-    }, function (err) {
-      if (timer) clearTimeout(timer);
-      throw err;
-    });
-  }
-
-  function jinaUrl(url) {
-    return JINA + String(url).replace(/^https?:\/\//i, "");
-  }
-
-  async function fetchJina(url) {
-    var response = await fetchTimeout(jinaUrl(url), {
-      headers: {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml",
-        "X-Return-Format": "html"
-      }
-    }, JINA_TIMEOUT);
-    var text = await response.text();
-    if (isChallenge(text) || /Warning: Target URL returned error/i.test(text)) return null;
-    return text;
-  }
-
-  async function fetchSite(url) {
-    try {
-      var response = await fetchTimeout(url, { headers: SITE_HEADERS }, TIMEOUT);
-      var text = await response.text();
-      if (response.ok && text && !isChallenge(text)) return text;
-    } catch (e) {}
-    try { return await fetchJina(url); } catch (e) { return null; }
-  }
-
-  function parseAutocomplete(text) {
-    var value = String(text || "").trim();
-    var pre = value.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-    if (pre) value = decodeEntities(pre[1]).trim();
-    if (value.charAt(0) !== "[") {
-      var start = value.indexOf("[");
-      var end = value.lastIndexOf("]");
-      if (start >= 0 && end > start) value = value.slice(start, end + 1);
+  function matchScore(itemTitle, title) {
+    if (!itemTitle || !title) return 0;
+    var a = norm(itemTitle), b = norm(title);
+    if (!a || !b) return 0;
+    if (a === b) return 12;
+    if (a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return 7;
+    var words = b.split(" ").filter(function (w) { return w.length > 2; });
+    if (!words.length) return 0;
+    for (var i = 0; i < words.length; i++) {
+      if (a.indexOf(words[i]) === -1) return 0;
     }
-    try { return JSON.parse(value); } catch (e) { return null; }
+    return 4;
   }
 
-  async function tmdbDetails(tmdbId) {
-    try {
-      var response = await fetchTimeout("https://api.themoviedb.org/3/movie/" + encodeURIComponent(tmdbId) +
-        "?api_key=" + TMDB_KEY + "&language=en-US", {
-        headers: { "User-Agent": UA, Accept: "application/json" }
-      }, 10000);
-      if (!response.ok) return null;
-      var data = await response.json();
-      return {
-        title: data.title || data.original_title || "",
-        originalTitle: data.original_title || "",
-        year: String(data.release_date || "").slice(0, 4)
-      };
-    } catch (e) { return null; }
-  }
-
-  async function searchSite(title, year) {
-    if (!title) return null;
-    var url = BASE + "/autocomplete/q.php?q=" + encodeURIComponent(title);
-    var text = await fetchSite(url);
-    var rows = parseAutocomplete(text);
-    if (!Array.isArray(rows) || !rows.length) return null;
-
-    var best = null, bestScore = 0;
-    rows.forEach(function (row) {
-      if (!row || !row.dizilink) return;
-      var rowYear = parseInt(row.yil, 10) || 0;
-      var targetYear = parseInt(year, 10) || 0;
-      var yearScore = 0;
-      if (rowYear && targetYear) {
-        var delta = Math.abs(rowYear - targetYear);
-        if (delta === 0) yearScore = 40;
-        else if (delta <= 1) yearScore = 20;
-        else return;
-      }
-      var sim = Math.max(
-        titleSimilarity(title, row.baslik),
-        titleSimilarity(title, row.altbaslik)
-      );
-      if (!sim && !yearScore) return;
-      var score = sim * 60 + yearScore;
-      if (score > bestScore) {
-        bestScore = score;
-        best = row;
-      }
-    });
-
-    if (!best || bestScore < 25) return null;
-    var prefix = best.prefix || "film";
-    return {
-      url: BASE + "/" + prefix + "/" + best.dizilink + "/",
-      title: best.baslik || title,
-      year: best.yil || year
-    };
-  }
-
-  function extractScx(html) {
-    var text = String(html || "");
-    var anchor = text.search(/\bscx\s*=\s*\{/);
-    if (anchor < 0) return null;
-    var start = text.indexOf("{", anchor);
-    var depth = 0, inString = false, quote = "", escaped = false;
-    for (var i = start; i < text.length; i++) {
-      var ch = text.charAt(i);
-      if (inString) {
-        if (escaped) escaped = false;
-        else if (ch === "\\") escaped = true;
-        else if (ch === quote) inString = false;
-        continue;
-      }
-      if (ch === '"' || ch === "'") { inString = true; quote = ch; continue; }
-      if (ch === "{") depth++;
-      else if (ch === "}") {
-        depth--;
-        if (depth === 0) {
-          try { return JSON.parse(text.slice(start, i + 1)); } catch (e) { return null; }
-        }
-      }
+  function scoreItem(item, titles) {
+    var best = 0;
+    for (var i = 0; i < titles.length; i++) {
+      var t = titles[i];
+      if (!t) continue;
+      var s = matchScore(item.title, t);
+      if (s > best) best = s;
     }
-    return null;
+    return best;
   }
 
-  function langLabel(key) {
-    if (key === "tr") return "Dublaj";
-    if (key === "en") return "Altyazı";
-    return "";
-  }
+  // -------------------------------------------------------------- searching
 
-  function flattenScx(scx) {
-    var out = [];
-    Object.keys(scx || {}).forEach(function (key) {
-      if (/^advid/i.test(key)) return;
-      var item = scx[key];
-      if (!item || typeof item !== "object") return;
-      var label = key;
-      try { label = base64DecodeUtf8(item.tt || "") || key; } catch (e) {}
-      var sx = item.sx || {};
-      if (sx.t) {
-        if (Array.isArray(sx.t)) {
-          sx.t.forEach(function (enc) {
-            if (typeof enc === "string" && enc) {
-              out.push({ key: key, label: label, enc: enc, lang: "", part: null });
-            }
-          });
-        } else if (typeof sx.t === "object") {
-          Object.keys(sx.t).forEach(function (lk) {
-            var enc = sx.t[lk];
-            if (typeof enc === "string" && enc) {
-              out.push({ key: key, label: label, enc: enc, lang: langLabel(lk), part: null });
-            }
-          });
-        }
-      }
-      if (sx.p) {
-        var parts = Array.isArray(sx.p) ? sx.p : Object.keys(sx.p).map(function (k) { return sx.p[k]; });
-        parts.forEach(function (enc, index) {
-          if (typeof enc === "string" && enc) {
-            out.push({ key: key, label: label, enc: enc, lang: "", part: index + 1 });
-          }
+  function searchSite(query) {
+    var url = BASE + "/?s=" + encodeURIComponent(query);
+    return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" })
+      .then(function (html) {
+        if (!html) return [];
+        // Arama sonuclari genelde <a href=".../film/slug/"> veya /dizi/slug/ seklindedir
+        var links = [...new Set(html.match(/href="([^"]+)"/gi) || [])].map(function (m) { return m.slice(6, -1); });
+        var out = [];
+        var seen = {};
+        links.forEach(function (l) {
+          var m = l.match(/https:\/\/www\.fullhdfilmizlesene\.co\/(?:film|dizi)\/([^\/]+)\/?$/i);
+          if (!m) return;
+          if (seen[l]) return;
+          seen[l] = true;
+          out.push({ url: l.replace(/\/+$/, "/"), slug: m[1], type: l.indexOf("/dizi/") !== -1 ? "dizi" : "film", title: l.split("/").pop().replace(/-/g, " ") });
         });
+        return out;
+      });
+  }
+
+  function findResult(titles, isTv) {
+    var best = null, bestScore = 0;
+    var ordered = titles.filter(Boolean).slice(0, 10);
+
+    function searchAll(idx) {
+      if (idx >= ordered.length) {
+        if (best) return Promise.resolve(best);
+        return prefixAll(0, null);
       }
-    });
-    return out;
-  }
-
-  function decodeScxEntry(entry) {
-    try {
-      var url = base64DecodeUtf8(rot13(entry));
-      return /^https?:\/\//i.test(url) ? url : null;
-    } catch (e) { return null; }
-  }
-
-  function decodeImgzBlob(blob) {
-    var reversed = String(blob || "").split("").reverse().join("");
-    var bytes = base64ToBytes(reversed);
-    var text = "";
-    for (var i = 0; i < bytes.length; i++) {
-      var k = "K9L".charCodeAt(i % 3);
-      text += String.fromCharCode(bytes[i] - (k % 5 + 1));
-    }
-    return base64DecodeUtf8(text);
-  }
-
-  function matchMediaUrl(text) {
-    var value = String(text || "");
-    var match = value.match(/file:\s*["']([^"']+\.m3u8[^"']*)["']/i) ||
-      value.match(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i) ||
-      value.match(/file:\s*["'](https?:\/\/[^"']+)["']/i);
-    return match ? match[1] : null;
-  }
-
-  function captionLang(label) {
-    var value = normalize(label);
-    if (value.indexOf("ingiliz") !== -1 || value.indexOf("eng") !== -1) return "en";
-    if (value.indexOf("turk") !== -1 || value.indexOf("tur") !== -1) return "tr";
-    return "tr";
-  }
-
-  function parseJwSetupTracks(html) {
-    var out = [];
-    var match = String(html || "").match(/jwSetup\.tracks\s*=\s*(\[[\s\S]*?\]);/);
-    if (!match) return out;
-    var tracks;
-    try { tracks = JSON.parse(match[1]); } catch (e) { return out; }
-    (Array.isArray(tracks) ? tracks : []).forEach(function (track) {
-      if (track && track.kind === "captions" && track.file && /^https?:\/\//i.test(track.file)) {
-        out.push({ url: track.file, language: captionLang(track.label), name: String(track.label || "").trim() });
-      }
-    });
-    return out;
-  }
-
-  async function fetchEmbedHtml(embedUrl, referer) {
-    try {
-      var response = await fetchTimeout(embedUrl, {
-        headers: { "User-Agent": UA, "Referer": referer || "" }
-      }, TIMEOUT);
-      if (!response.ok) throw new Error("bad status " + response.status);
-      var text = await response.text();
-      if (isChallenge(text)) throw new Error("challenge");
-      return text;
-    } catch (e) {
-      try {
-        var jinaText = await fetchJina(embedUrl);
-        if (jinaText) return jinaText;
-      } catch (e2) {}
-      throw e;
-    }
-  }
-
-  async function resolveRapidvid(embedUrl) {
-    var origin = new URL(embedUrl).origin;
-    var html;
-    try { html = await fetchEmbedHtml(embedUrl, BASE + "/"); }
-    catch (e) { return null; }
-    if (!html) return null;
-
-    var p8 = html.match(/window\._p8\s*=\s*['"]([^'"]+)['"]/);
-    if (p8) {
-      var config = null;
-      try { config = JSON.parse(decodeImgzBlob(p8[1])); } catch (e) {}
-      if (config) {
-        var masters = [];
-        if (config.cm && /^https?:\/\//i.test(config.cm)) masters.push(config.cm);
-        if (config.tm && /^https?:\/\//i.test(config.tm) && config.tm !== config.cm) masters.push(config.tm);
-        if (masters.length) {
-          var subtitles = [];
-          (Array.isArray(config.ct) ? config.ct : []).forEach(function (track) {
-            if (track && track.file && /^https?:\/\//i.test(track.file)) {
-              subtitles.push({
-                url: track.file,
-                language: captionLang(track.label),
-                name: String(track.label || "").trim()
-              });
-            }
-          });
-          return masters.map(function (master) {
-            return { url: master, referer: origin + "/", origin: origin, subtitles: subtitles };
-          });
+      return searchSite(ordered[idx]).then(function (items) {
+        for (var i = 0; i < items.length; i++) {
+          var s = scoreItem(items[i], titles);
+          if (s > bestScore) { bestScore = s; best = items[i]; }
         }
-      }
+        if (bestScore >= 10) return Promise.resolve(best);
+        return searchAll(idx + 1);
+      }).catch(function () { return searchAll(idx + 1); });
     }
 
-    var fileMatch = html.match(/["']file["']\s*:\s*(?:av|_)\(\s*["']([^"']+)["']\s*\)/);
-    var videoUrl = null;
-    if (fileMatch) {
-      try { videoUrl = decodeImgzBlob(fileMatch[1]); } catch (e) {}
+    function prefixAll(pIdx, found) {
+      if (found) return Promise.resolve(found);
+      if (pIdx >= 2 || !ordered.length) return Promise.resolve(best);
+      var words = String(ordered[0] || "").split(/\s+/).filter(Boolean);
+      var prefix = null;
+      if (pIdx === 0 && words.length > 2) prefix = words.slice(0, 3).join(" ");
+      if (pIdx === 1 && words.length > 1) prefix = words.slice(0, 2).join(" ");
+      if (!prefix) return prefixAll(pIdx + 1, null);
+      return searchSite(prefix).then(function (items) {
+        for (var i = 0; i < items.length; i++) {
+          var s = scoreItem(items[i], titles);
+          if (s > bestScore) { bestScore = s; best = items[i]; }
+        }
+        if (bestScore >= 7) return Promise.resolve(best);
+        return prefixAll(pIdx + 1, null);
+      }).catch(function () { return prefixAll(pIdx + 1, null); });
     }
-    if (!videoUrl) {
-      var sourcesMatch = html.match(/jwSetup\.sources\s*=\s*(\[[\s\S]*?\]);/);
-      if (sourcesMatch) videoUrl = matchMediaUrl(sourcesMatch[1]);
-    }
-    if (!videoUrl || !/^https?:\/\//i.test(videoUrl)) return null;
-    return [{ url: videoUrl, referer: origin + "/", origin: origin, subtitles: parseJwSetupTracks(html) }];
+
+    return searchAll(0);
   }
 
-  async function resolveVidmoly(embedUrl) {
-    var origin = new URL(embedUrl).origin;
-    var response = await fetchTimeout(embedUrl, {
-      headers: { "User-Agent": UA, "Referer": BASE + "/" }
-    }, TIMEOUT);
-    if (!response.ok) return null;
-    var html = await response.text();
-    var match = html.match(/file:\s*['"]([^'"]+\.m3u8[^'"]*)['"]/i);
-    if (!match) return null;
-    return [{ url: match[1], referer: origin + "/", origin: origin, subtitles: [] }];
-  }
+  // -------------------------------------------------------------- page parsing
 
-  function unpackPacked(html) {
-    var match = String(html || "").match(/\}\('(.+?)',(\d+),(\d+),'(.+?)'\.split\('\|'\)/s);
-    if (!match) return null;
-    var payload = match[1].replace(/\\(['"\\/])/g, "$1");
-    var radix = parseInt(match[2], 10);
-    var count = parseInt(match[3], 10);
-    var dict = match[4].split("|");
-    function toBase(n) {
-      return (n < radix ? "" : toBase(Math.floor(n / radix))) +
-        ((n = n % radix) > 35 ? String.fromCharCode(n + 29) : n.toString(36));
-    }
-    var table = {};
-    for (var i = count - 1; i >= 0; i--) {
-      var token = toBase(i);
-      table[token] = dict[i] && dict[i].length ? dict[i] : token;
-    }
-    return payload.replace(/\b\w+\b/g, function (word) {
-      return Object.prototype.hasOwnProperty.call(table, word) ? table[word] : word;
-    });
-  }
+  function getPage(slug, isTv) {
+    var url = BASE + "/" + (isTv ? "dizi/" : "film/") + slug + "/";
+    return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" })
+      .then(function (html) {
+        if (!html) return null;
 
-  function decodeHexEscapes(text) {
-    return String(text || "").replace(/\\x([0-9a-fA-F]{2})/g, function (_, hex) {
-      return String.fromCharCode(parseInt(hex, 16));
-    });
-  }
+        // 1) embed_player_url_1 (dizifilm tarzi JSON-LD / script icinde)
+        var m = html.match(/["']embed_player_url_1["']?\s*:\s*["']([^"']+)["']/);
+        if (!m) m = html.match(/<script[^>]*>[\s\S]*?embed_player_url_1["']?\s*:\s*["']([^"']+)["']/i);
+        if (m) {
+          var embedUrl = m[1];
+          var embedId = embedUrl.match(/embed\/([a-z0-9]+)$/i);
+          if (embedId) return { url: embedUrl, id: embedId[1], type: "vidmixi" };
+        }
 
-  async function resolveVidmoxy(embedUrl) {
-    var origin = new URL(embedUrl).origin;
-    var response = await fetchTimeout(embedUrl, {
-      headers: { "User-Agent": UA, "Referer": BASE + "/" }
-    }, TIMEOUT);
-    if (!response.ok) return null;
-    var html = await response.text();
-    var blockStart = /eval\(function\(p,a,c,k,e,[dr]\)/g;
-    var block;
-    while ((block = blockStart.exec(html))) {
-      var unpacked = html.slice(block.index);
-      for (var layer = 0; layer < 3; layer++) {
-        var next = unpackPacked(unpacked);
-        if (!next) break;
-        unpacked = next;
-        var fileMatch = unpacked.match(/["']file["']\s*:\s*["']([^"']+)["']/);
-        if (fileMatch) {
-          var decoded = decodeHexEscapes(fileMatch[1]);
-          if (/^https?:\/\//i.test(decoded)) {
-            return [{ url: decoded, referer: origin + "/", origin: origin, subtitles: [] }];
+        // 2) Direkt vidmixi embed linki ara
+        var m2 = html.match(/https:\/\/vidmixi\.com\/embed\/[a-z0-9]+/gi);
+        if (m2 && m2.length) {
+          var u = m2[0];
+          var id = u.match(/embed\/([a-z0-9]+)$/i);
+          return { url: u, id: id ? id[1] : null, type: "vidmixi" };
+        }
+
+        // 3) Generic embed / iframe arama
+        var m3 = html.match(/<iframe[^>]*src="([^"]+)"/gi);
+        if (m3) {
+          for (var i = 0; i < m3.length; i++) {
+            var u2 = m3[i].slice(m3[i].indexOf('src="')+5, -1);
+            if (u2.indexOf("vidmixi") !== -1 || u2.indexOf("embed") !== -1) {
+              var id2 = u2.match(/embed\/([a-z0-9]+)$/i);
+              return { url: u2, id: id2 ? id2[1] : null, type: "embed" };
+            }
           }
         }
-        var media = matchMediaUrl(unpacked);
-        if (media && /^https?:\/\//i.test(media)) {
-          return [{ url: media, referer: origin + "/", origin: origin, subtitles: [] }];
-        }
-      }
-    }
-    return null;
-  }
 
-  async function resolveEmbed(embedUrl) {
-    if (/rapidvid|imgz\.me/i.test(embedUrl)) return resolveRapidvid(embedUrl);
-    if (/vidmoly/i.test(embedUrl)) return resolveVidmoly(embedUrl);
-    if (/vidmoxy/i.test(embedUrl)) return resolveVidmoxy(embedUrl);
-    return resolveVidmoly(embedUrl);
-  }
-
-  function qRank(quality) {
-    var q = String(quality || "").toLowerCase();
-    if (/2160|4k|uhd/.test(q)) return 5;
-    if (/1440|2k/.test(q)) return 4;
-    if (/1080|fhd/.test(q)) return 3;
-    if (/720|hd/.test(q)) return 2;
-    if (/480|sd/.test(q)) return 1;
-    return 0.5;
-  }
-
-  async function masterQuality(url, headers) {
-    var urlLower = String(url || "").toLowerCase();
-    var urlMatch = urlLower.match(/(?:^|\/|\.|-|_)(2160p|1440p|1080p|720p|480p|360p)(?:\/|\.|-|_|$|\?)/i);
-    if (urlMatch) return urlMatch[1];
-    try {
-      var response = await fetchTimeout(url, { headers: headers }, 8000);
-      if (!response.ok) return "Auto";
-      var text = await response.text();
-      var heights = [];
-      var match;
-      var re = /RESOLUTION=\d+x(\d+)/gi;
-      while ((match = re.exec(text))) heights.push(parseInt(match[1], 10));
-      if (!heights.length) return "Auto";
-      var height = Math.max.apply(null, heights);
-      if (height >= 2000) return "2160p";
-      if (height >= 1400) return "1440p";
-      if (height >= 1000) return "1080p";
-      if (height >= 700) return "720p";
-      if (height >= 400) return "480p";
-      return "Auto";
-    } catch (e) { return "Auto"; }
-  }
-
-  async function getStreams(tmdbId, mediaType) {
-    var tag = "[fullhdfilmizlesene]";
-    if (mediaType === "tv" || mediaType === "series") {
-      console.log(tag + " Movie-only provider");
-      return [];
-    }
-
-    var info = await tmdbDetails(tmdbId);
-    if (!info || !info.title) {
-      console.log(tag + " TMDB details not found");
-      return [];
-    }
-
-    var queries = [info.title];
-    if (info.originalTitle && normalize(info.originalTitle) !== normalize(info.title)) {
-      queries.push(info.originalTitle);
-    }
-
-    var page = null;
-    for (var i = 0; i < queries.length && !page; i++) {
-      page = await searchSite(queries[i], info.year);
-    }
-    if (!page) {
-      console.log(tag + " No matching page found");
-      return [];
-    }
-    console.log(tag + " Matched page: " + page.title + " -> " + page.url);
-
-    var html = await fetchSite(page.url);
-    if (!html) {
-      console.log(tag + " Failed to fetch movie page");
-      return [];
-    }
-
-    var scx = extractScx(html);
-    if (!scx) {
-      console.log(tag + " scx not found");
-      return [];
-    }
-
-    var descriptors = flattenScx(scx).slice(0, MAX_SOURCES);
-    if (!descriptors.length) {
-      console.log(tag + " No source descriptors");
-      return [];
-    }
-
-    var display = info.title + (info.year ? " (" + info.year + ")" : "");
-    var streams = [], seen = {};
-
-    for (var d = 0; d < descriptors.length; d++) {
-      var descriptor = descriptors[d];
-      var embedUrl = decodeScxEntry(descriptor.enc);
-      if (!embedUrl) continue;
-      var resolvedList = null;
-      try { resolvedList = await resolveEmbed(embedUrl); } catch (e) {}
-      if (!Array.isArray(resolvedList)) resolvedList = resolvedList ? [resolvedList] : [];
-      for (var r = 0; r < resolvedList.length; r++) {
-      var resolved = resolvedList[r];
-      if (!resolved || !resolved.url || seen[resolved.url]) continue;
-      seen[resolved.url] = true;
-
-      var headers = {
-        "User-Agent": UA,
-        "Referer": resolved.referer || (resolved.origin || "") + "/",
-        "Origin": resolved.origin || ""
-      };
-      var quality = await masterQuality(resolved.url, headers);
-      var tags = [quality, descriptor.label, descriptor.lang];
-      if (descriptor.part) tags.push("Part " + descriptor.part);
-      var name = "FullHDFilmizlesene - " + descriptor.label +
-        (descriptor.lang ? " " + descriptor.lang : "") +
-        (descriptor.part ? " Part " + descriptor.part : "") +
-        (quality !== "Auto" ? " " + quality : "");
-
-      streams.push({
-        name: name,
-        title: display + "\n" + tags.filter(Boolean).join(" - ") + " [HLS]",
-        url: resolved.url,
-        quality: quality,
-        isM3u8: true,
-        type: "hls",
-        headers: headers,
-        subtitles: resolved.subtitles || [],
-        provider: "fullhdfilmizlesene"
+        return null;
       });
+  }
+
+  // -------------------------------------------------------------- vidmixi embed decryption
+
+  function resolveVidmixi(embedUrl) {
+    return fetchText(embedUrl, { "User-Agent": UA, Referer: "https://fullhdfilmizlesene.co/" })
+      .then(function (html) {
+        if (!html) return null;
+        console.log("[fullhdfilmizlesene] embed page len:", html.length);
+
+        // bePlayer(hash, set) pattern
+        var m = html.match(/bePlayer\(['"]([^'"]+)['"]\s*,\s*['"](\{[^"]+\})['"]\)/);
+        if (!m) return null;
+        var videoId = m[1];
+        var encryptedJson = m[2];
+
+        try {
+          var config = JSON.parse(encryptedJson);
+        } catch (e) {
+          return null;
+        }
+        if (!config || !config.ct || !config.iv || !config.s) return null;
+
+        // EVP_BytesToKey (MD5)
+        var saltBytes = [];
+        for (var i = 0; i < config.s.length; i += 2) saltBytes.push(parseInt(config.s.substr(i, 2), 16));
+        var pwdBytes = _strToArray(videoId);
+        var derived = [];
+        var current = [];
+        while (derived.length < 32 + 16) {
+          var md5Input = current.concat(pwdBytes).concat(saltBytes);
+          var hash = _md5Bytes(md5Input);
+          current = hash;
+          derived = derived.concat(hash);
+        }
+        var key = derived.slice(0, 32);
+        var iv = derived.slice(32, 48);
+
+        var ciphertext = _atob(config.ct);
+        var ciphertextBytes = [];
+        for (var i = 0; i < ciphertext.length; i++) ciphertextBytes.push(ciphertext.charCodeAt(i));
+        var ivBytes = [];
+        var ivHex = config.iv;
+        for (var i = 0; i < ivHex.length; i += 2) ivBytes.push(parseInt(ivHex.substr(i, 2), 16));
+
+        var plaintext = _aes256CbcDecrypt(ciphertextBytes, key, ivBytes);
+        if (!plaintext) return null;
+
+        try {
+          var set = JSON.parse(plaintext);
+        } catch (e) {
+          return null;
+        }
+        if (!set || !set.video_location) return null;
+
+        var subtitles = [];
+        if (Array.isArray(set.strSubtitles)) {
+          set.strSubtitles.forEach(function (sub) {
+            if (!sub || !sub.file) return;
+            var subUrl = sub.file;
+            if (subUrl.indexOf("/") === 0) subUrl = "https://vidmixi.com" + subUrl;
+            var lang = sub.language || "und";
+            if (lang === "tr") lang = "tr";
+            else if (lang === "en") lang = "en";
+            subtitles.push({
+              url: subUrl,
+              language: lang,
+              name: sub.label || lang,
+              lang: lang,
+              headers: { "User-Agent": UA, "Referer": embedUrl }
+            });
+          }
+        }
+
+        return { url: set.video_location, subtitles: subtitles };
+      });
+  }
+
+  // -------------------------------------------------------------- crypto helpers
+
+  function _md5(str) {
+    var x = _strToArray(str);
+    var a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+    var KK = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391];
+    x[_x(x.length / 4 + 1)] = 0x80 << ((str.length % 4) * 8);
+    x[_x((x.length + 64) >> 9 << 4) + 14] = str.length * 8;
+    for (var i = 0; i < x.length; i += 16) {
+      var aa = a, bb = b, cc = c, dd = d;
+      a = _ff(a, b, c, d, x[i + 0], 7, KK[0]); d = _ff(d, a, b, c, x[i + 1], 12, KK[1]);
+      c = _ff(c, d, a, b, x[i + 2], 17, KK[2]); b = _ff(b, c, d, a, x[i + 3], 22, KK[3]);
+      a = _ff(a, b, c, d, x[i + 4], 5, KK[4]); d = _ff(d, a, b, c, x[i + 5], 9, KK[5]);
+      c = _ff(c, d, a, b, x[i + 6], 14, KK[6]); b = _ff(b, c, d, a, x[i + 7], 20, KK[7]);
+      a = _ff(a, b, c, d, x[i + 8], 5, KK[8]); d = _ff(d, a, b, c, x[i + 9], 9, KK[9]);
+      c = _ff(c, d, a, b, x[i + 10], 14, KK[10]); b = _ff(b, c, d, a, x[i + 11], 20, KK[11]);
+      a = _ff(a, b, c, d, x[i + 12], 5, KK[12]); d = _ff(d, a, b, c, x[i + 13], 9, KK[13]);
+      c = _ff(c, d, a, b, x[i + 14], 14, KK[14]); b = _ff(b, c, d, a, x[i + 15], 20, KK[15]);
+      a = _gg(a, b, c, d, x[i + 1], 5, KK[16]); d = _gg(d, a, b, c, x[i + 6], 9, KK[17]);
+      c = _gg(c, d, a, b, x[i + 11], 14, KK[18]); b = _gg(b, c, d, a, x[i + 0], 20, KK[19]);
+      a = _gg(a, b, c, d, x[i + 5], 5, KK[20]); d = _gg(d, a, b, c, x[i + 10], 9, KK[21]);
+      c = _gg(c, d, a, b, x[i + 15], 14, KK[22]); b = _gg(b, c, d, a, x[i + 4], 20, KK[23]);
+      a = _gg(a, b, c, d, x[i + 9], 5, KK[24]); d = _gg(d, a, b, c, x[i + 14], 9, KK[25]);
+      c = _gg(c, d, a, b, x[i + 3], 14, KK[26]); b = _gg(b, c, d, a, x[i + 8], 20, KK[27]);
+      a = _gg(a, b, c, d, x[i + 13], 5, KK[28]); d = _gg(d, a, b, c, x[i + 2], 9, KK[29]);
+      c = _gg(c, d, a, b, x[i + 7], 14, KK[30]); b = _gg(b, c, d, a, x[i + 12], 20, KK[31]);
+      a = _hh(a, b, c, d, x[i + 5], 4, KK[32]); d = _hh(d, a, b, c, x[i + 8], 11, KK[33]);
+      c = _hh(c, d, a, b, x[i + 11], 16, KK[34]); b = _hh(b, c, d, a, x[i + 14], 23, KK[35]);
+      a = _hh(a, b, c, d, x[i + 1], 4, KK[36]); d = _hh(d, a, b, c, x[i + 4], 11, KK[37]);
+      c = _hh(c, d, a, b, x[i + 7], 16, KK[38]); b = _hh(b, c, d, a, x[i + 10], 23, KK[39]);
+      a = _hh(a, b, c, d, x[i + 13], 4, KK[40]); d = _hh(d, a, b, c, x[i + 0], 11, KK[41]);
+      c = _hh(c, d, a, b, x[i + 3], 16, KK[42]); b = _hh(b, c, d, a, x[i + 6], 23, KK[43]);
+      a = _hh(a, b, c, d, x[i + 9], 4, KK[44]); d = _hh(d, a, b, c, x[i + 12], 11, KK[45]);
+      c = _hh(c, d, a, b, x[i + 15], 16, KK[46]); b = _hh(b, c, d, a, x[i + 2], 23, KK[47]);
+      a = _ii(a, b, c, d, x[i + 0], 6, KK[48]); d = _ii(d, a, b, c, x[i + 7], 10, KK[49]);
+      c = _ii(c, d, a, b, x[i + 14], 15, KK[50]); b = _ii(b, c, d, a, x[i + 5], 21, KK[51]);
+      a = _ii(a, b, c, d, x[i + 12], 6, KK[52]); d = _ii(d, a, b, c, x[i + 3], 10, KK[53]);
+      c = _ii(c, d, a, b, x[i + 10], 15, KK[54]); b = _ii(b, c, d, a, x[i + 1], 21, KK[55]);
+      a = _ii(a, b, c, d, x[i + 8], 6, KK[56]); d = _ii(d, a, b, c, x[i + 15], 10, KK[57]);
+      c = _ii(c, d, a, b, x[i + 6], 15, KK[58]); b = _ii(b, c, d, a, x[i + 13], 21, KK[59]);
+      a = _ii(a, b, c, d, x[i + 4], 6, KK[60]); d = _ii(d, a, b, c, x[i + 11], 10, KK[61]);
+      c = _ii(c, d, a, b, x[i + 2], 15, KK[62]); b = _ii(b, c, d, a, x[i + 9], 21, KK[63]);
+      a = _safeAdd(a, aa); b = _safeAdd(b, bb); c = _safeAdd(c, cc); d = _safeAdd(d, dd);
+    }
+    return _hex(a) + _hex(b) + _hex(c) + _hex(d);
+  }
+
+  function _safeAdd(a, b) { var lsw = (a & 0xFFFF) + (b & 0xFFFF); var msw = (a >> 16) + (b >> 16) + (lsw >> 16); return (msw << 16) | (lsw & 0xFFFF); }
+  function _rol(num, cnt) { return (num << cnt) | (num >>> (32 - cnt)); }
+  function _cmn(q, a, b, x, s, t) { return _safeAdd(_rol(_safeAdd(_safeAdd(a, q), _safeAdd(x, t)), s), b); }
+  function _ff(a, b, c, d, x, s, t) { return _cmn((b & c) | ((~b) & d), a, b, x, s, t); }
+  function _gg(a, b, c, d, x, s, t) { return _cmn((b & d) | (c & (~d)), a, b, x, s, t); }
+  function _hh(a, b, c, d, x, s, t) { return _cmn(b ^ c ^ d, a, b, x, s, t); }
+  function _ii(a, b, c, d, x, s, t) { return _cmn(c ^ (b | (~d)), a, b, x, s, t); }
+  function _strToArray(str) { var bin = []; for (var i = 0; i < str.length * 8; i += 8) bin[i >> 5] |= (str.charCodeAt(i / 8) & 0xFF) << (i % 32); return bin; }
+  function _hex(n) { var s = "", v; for (var i = 7; i >= 0; i--) { v = (n >> (i * 4)) & 0xF; s += v.toString(16); } return s; }
+  function _x(n) { return n; }
+
+  function _md5Bytes(bytes) {
+    var x = _arrayToWords(bytes);
+    var a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+    var KK = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391];
+    x[_x(x.length / 4 + 1)] = 0x80 << ((bytes.length % 4) * 8);
+    x[_x((x.length + 64) >> 9 << 4) + 14] = bytes.length * 8;
+    for (var i = 0; i < x.length; i += 16) {
+      var aa = a, bb = b, cc = c, dd = d;
+      a = _ff(a, b, c, d, x[i + 0], 7, KK[0]); d = _ff(d, a, b, c, x[i + 1], 12, KK[1]);
+      c = _ff(c, d, a, b, x[i + 2], 17, KK[2]); b = _ff(b, c, d, a, x[i + 3], 22, KK[3]);
+      a = _ff(a, b, c, d, x[i + 4], 5, KK[4]); d = _ff(d, a, b, c, x[i + 5], 9, KK[5]);
+      c = _ff(c, d, a, b, x[i + 6], 14, KK[6]); b = _ff(b, c, d, a, x[i + 7], 20, KK[7]);
+      a = _ff(a, b, c, d, x[i + 8], 5, KK[8]); d = _ff(d, a, b, c, x[i + 9], 9, KK[9]);
+      c = _ff(c, d, a, b, x[i + 10], 14, KK[10]); b = _ff(b, c, d, a, x[i + 11], 20, KK[11]);
+      a = _ff(a, b, c, d, x[i + 12], 5, KK[12]); d = _ff(d, a, b, c, x[i + 13], 9, KK[13]);
+      c = _ff(c, d, a, b, x[i + 14], 14, KK[14]); b = _ff(b, c, d, a, x[i + 15], 20, KK[15]);
+      a = _gg(a, b, c, d, x[i + 1], 5, KK[16]); d = _gg(d, a, b, c, x[i + 6], 9, KK[17]);
+      c = _gg(c, d, a, b, x[i + 11], 14, KK[18]); b = _gg(b, c, d, a, x[i + 0], 20, KK[19]);
+      a = _gg(a, b, c, d, x[i + 5], 5, KK[20]); d = _gg(d, a, b, c, x[i + 10], 9, KK[21]);
+      c = _gg(c, d, a, b, x[i + 15], 14, KK[22]); b = _gg(b, c, d, a, x[i + 4], 20, KK[23]);
+      a = _gg(a, b, c, d, x[i + 9], 5, KK[24]); d = _gg(d, a, b, c, x[i + 14], 9, KK[25]);
+      c = _gg(c, d, a, b, x[i + 3], 14, KK[26]); b = _gg(b, c, d, a, x[i + 8], 20, KK[27]);
+      a = _gg(a, b, c, d, x[i + 13], 5, KK[28]); d = _gg(d, a, b, c, x[i + 2], 9, KK[29]);
+      c = _gg(c, d, a, b, x[i + 7], 14, KK[30]); b = _gg(b, c, d, a, x[i + 12], 20, KK[31]);
+      a = _hh(a, b, c, d, x[i + 5], 4, KK[32]); d = _hh(d, a, b, c, x[i + 8], 11, KK[33]);
+      c = _hh(c, d, a, b, x[i + 11], 16, KK[34]); b = _hh(b, c, d, a, x[i + 14], 23, KK[35]);
+      a = _hh(a, b, c, d, x[i + 1], 4, KK[36]); d = _hh(d, a, b, c, x[i + 4], 11, KK[37]);
+      c = _hh(c, d, a, b, x[i + 7], 16, KK[38]); b = _hh(b, c, d, a, x[i + 10], 23, KK[39]);
+      a = _hh(a, b, c, d, x[i + 13], 4, KK[40]); d = _hh(d, a, b, c, x[i + 0], 11, KK[41]);
+      c = _hh(c, d, a, b, x[i + 3], 16, KK[42]); b = _hh(b, c, d, a, x[i + 6], 23, KK[43]);
+      a = _hh(a, b, c, d, x[i + 9], 4, KK[44]); d = _hh(d, a, b, c, x[i + 12], 11, KK[45]);
+      c = _hh(c, d, a, b, x[i + 15], 16, KK[46]); b = _hh(b, c, d, a, x[i + 2], 23, KK[47]);
+      a = _ii(a, b, c, d, x[i + 0], 6, KK[48]); d = _ii(d, a, b, c, x[i + 7], 10, KK[49]);
+      c = _ii(c, d, a, b, x[i + 14], 15, KK[50]); b = _ii(b, c, d, a, x[i + 5], 21, KK[51]);
+      a = _ii(a, b, c, d, x[i + 12], 6, KK[52]); d = _ii(d, a, b, c, x[i + 3], 10, KK[53]);
+      c = _ii(c, d, a, b, x[i + 10], 15, KK[54]); b = _ii(b, c, d, a, x[i + 1], 21, KK[55]);
+      a = _ii(a, b, c, d, x[i + 8], 6, KK[56]); d = _ii(d, a, b, c, x[i + 15], 10, KK[57]);
+      c = _ii(c, d, a, b, x[i + 6], 15, KK[58]); b = _ii(b, c, d, a, x[i + 13], 21, KK[59]);
+      a = _ii(a, b, c, d, x[i + 4], 6, KK[60]); d = _ii(d, a, b, c, x[i + 11], 10, KK[61]);
+      c = _ii(c, d, a, b, x[i + 2], 15, KK[62]); b = _ii(b, c, d, a, x[i + 9], 21, KK[63]);
+      a = _safeAdd(a, aa); b = _safeAdd(b, bb); c = _safeAdd(c, cc); d = _safeAdd(d, dd);
+    }
+    return [a, b, c, d];
+  }
+
+  function _arrayToWords(bytes) { var words = []; for (var i = 0; i < bytes.length; i++) words[i >>> 2] |= bytes[i] << (24 - (i % 4) * 8); return words; }
+
+  function _atob(str) {
+    if (typeof atob === "function") {
+      try { return atob(str); } catch (e) {}
+    }
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    var output = "";
+    str = String(str).replace(/[^A-Za-z0-9\+\/=]/g, "");
+    for (var i = 0; i < str.length; ) {
+      var enc1 = chars.indexOf(str.charAt(i++));
+      var enc2 = chars.indexOf(str.charAt(i++));
+      var enc3 = chars.indexOf(str.charAt(i++));
+      var enc4 = chars.indexOf(str.charAt(i++));
+      var chr1 = (enc1 << 2) | (enc2 >> 4);
+      var chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+      var chr3 = ((enc3 & 3) << 6) | enc4;
+      output += String.fromCharCode(chr1);
+      if (enc3 !== 64) output += String.fromCharCode(chr2);
+      if (enc4 !== 64) output += String.fromCharCode(chr3);
+    }
+    return output;
+  }
+
+  function _evpBytesToKey(password, saltStr, keySize, ivSize) {
+    var saltBytes = [];
+    for (var i = 0; i < saltStr.length; i += 2) saltBytes.push(parseInt(saltStr.substr(i, 2), 16));
+    var pwdBytes = _strToArray(password);
+    var derived = [];
+    var current = [];
+    while (derived.length < keySize + ivSize) {
+      var md5Input = current.concat(pwdBytes).concat(saltBytes);
+      var hash = _md5Bytes(md5Input);
+      current = hash;
+      derived = derived.concat(hash);
+    }
+    var key = derived.slice(0, keySize);
+    var iv = derived.slice(keySize, keySize + ivSize);
+    return { key: key, iv: iv };
+  }
+
+  // AES-256-CBC decrypt (pure JS)
+  var _sbox = [
+    0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
+    0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
+    0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
+    0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
+    0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa6,0x92,0xa0,0x11,0xec,0x93,0x34,0x31,0x29,
+    0x9e,0x50,0x8a,0x31,0x82,0x7b,0x18,0x28,0xdd,0x8f,0x92,0x95,0x1b,0x94,0x20,0x79,
+    0x2e,0x07,0xb8,0xdb,0x2e,0x43,0xd9,0x71,0x87,0x1c,0x9d,0x2c,0x54,0x9b,0x4c,0x0d,
+    0x51,0xb0,0x77,0x9c,0x44,0x0e,0x41,0x77,0x4e,0x8f,0x4f,0x77,0x5d,0x2e,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,
+    0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77
+  ];
+
+  var _invSbox = [
+    0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb,
+    0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb,
+    0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc9,0x4e,
+    0x08,0x2e,0xa1,0x66,0x28,0xd3,0x2f,0x8e,0x44,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,
+    0x9b,0x2f,0x01,0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,
+    0x2f,0x01,0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,
+    0x2f,0x01,0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,
+    0x01,0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01,
+    0x6f,0xaa,0xcd,0x1e,0x5e,0x45,0x4e,0x7a,0x92,0xc8,0xc5,0x5e,0x9b,0x2f,0x01
+  ];
+
+  var _rcon = [0x00,0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36];
+
+  function _gmul(a, b) {
+    var p = 0;
+    for (var i = 0; i < 8; i++) {
+      if (b & 1) p ^= a;
+      var hi = a & 0x80;
+      a = ((a << 1) & 0xFF) ^ (hi ? 0x1b : 0);
+      b >>= 1;
+    }
+    return p;
+  }
+
+  function _aes256CbcDecrypt(ciphertextBytes, keyBytes, ivBytes) {
+    var rounds = 14;
+    var w = [];
+    for (var i = 0; i < 8; i++) w[i] = (keyBytes[i * 4] << 24) | (keyBytes[i * 4 + 1] << 16) | (keyBytes[i * 4 + 2] << 8) | keyBytes[i * 4 + 3];
+    for (var i = 8; i < 60; i++) {
+      var temp = w[i - 1];
+      if (i % 8 === 0) {
+        var rot = ((temp << 8) | (temp >>> 24)) & 0xFFFFFFFF;
+        var sub = (_sbox[(rot >>> 24) & 0xFF] << 24) | (_sbox[(rot >>> 16) & 0xFF] << 16) | (_sbox[(rot >>> 8) & 0xFF] << 8) | _sbox[rot & 0xFF];
+        sub ^= _rcon[i / 8];
+        temp = sub ^ temp;
+      } else if (i % 8 === 4) {
+        temp = (_sbox[(temp >>> 24) & 0xFF] << 24) | (_sbox[(temp >>> 16) & 0xFF] << 16) | (_sbox[(temp >>> 8) & 0xFF] << 8) | _sbox[temp & 0xFF];
+      }
+      w[i] = w[i - 8] ^ temp;
+    }
+
+    function addRoundKey(state, round) {
+      for (var i = 0; i < 4; i++) state[i] ^= w[round * 4 + i];
+    }
+
+    function invShiftRows(state) {
+      var t = state[1]; state[1] = state[13]; state[13] = state[9]; state[9] = state[5]; state[5] = t;
+      t = state[2]; state[2] = state[10]; state[10] = t; t = state[6]; state[6] = state[14]; state[14] = t;
+      t = state[3]; state[3] = state[7]; state[7] = state[11]; state[11] = state[15]; state[15] = t;
+    }
+
+    function invSubBytes(state) {
+      for (var i = 0; i < 16; i++) state[i] = _invSbox[state[i]];
+    }
+
+    function invMixColumns(state) {
+      for (var i = 0; i < 4; i++) {
+        var a = state[i], b = state[i + 4], c = state[i + 8], d = state[i + 12];
+        state[i] = _gmul(0x0e, a) ^ _gmul(0x0b, b) ^ _gmul(0x0d, c) ^ _gmul(0x09, d);
+        state[i + 4] = _gmul(0x09, a) ^ _gmul(0x0e, b) ^ _gmul(0x0b, c) ^ _gmul(0x0d, d);
+        state[i + 8] = _gmul(0x0d, a) ^ _gmul(0x09, b) ^ _gmul(0x0e, c) ^ _gmul(0x0b, d);
+        state[i + 12] = _gmul(0x0b, a) ^ _gmul(0x0d, b) ^ _gmul(0x09, c) ^ _gmul(0x0e, d);
       }
     }
 
-    streams.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
-    console.log(tag + " Found " + streams.length + " streams");
-    return streams;
+    function decryptBlock(input) {
+      var state = [];
+      for (var i = 0; i < 16; i++) state[i] = input[i];
+      addRoundKey(state, rounds);
+      invShiftRows(state);
+      invSubBytes(state);
+      for (var round = rounds - 1; round >= 1; round--) {
+        addRoundKey(state, round);
+        invMixColumns(state);
+        invShiftRows(state);
+        invSubBytes(state);
+      }
+      addRoundKey(state, 0);
+      return state;
+    }
+
+    var numBlocks = ciphertextBytes.length / 16;
+    var prev = ivBytes.slice(0);
+    var plaintext = [];
+    for (var b = 0; b < numBlocks; b++) {
+      var block = ciphertextBytes.slice(b * 16, b * 16 + 16);
+      var decrypted = decryptBlock(block);
+      for (var i = 0; i < 16; i++) plaintext.push(decrypted[i] ^ prev[i]);
+      prev = block.slice(0);
+    }
+    var padLen = plaintext[plaintext.length - 1];
+    if (padLen > 0 && padLen <= 16) plaintext.length -= padLen;
+    var result = "";
+    for (var i = 0; i < plaintext.length; i++) result += String.fromCharCode(plaintext[i]);
+    return result;
+  }
+
+  // -------------------------------------------------------------- getStreams
+
+  function getStreams(tmdbId, mediaType, season, episode, settings) {
+    var tag = "[fullhdfilmizlesene]";
+    var isTv = mediaType === "tv" || mediaType === "series";
+    var s = parseInt(season, 10) || 1;
+    var e = parseInt(episode, 10) || 1;
+    var apiKey = getTmdbKey(settings);
+
+    return tmdbInfo(tmdbId, isTv, apiKey).then(function (info) {
+      if (!info || !info.title) {
+        console.log(tag + " TMDB bilgisi alinamadi");
+        return [];
+      }
+
+      var titles = [info.title, info.original].concat(info.alternatives || []);
+      titles = titles.filter(function (t, i) { return t && titles.indexOf(t) === i; });
+
+      console.log(tag + " Araniyor: " + titles.join(" | ") + (info.year ? " (" + info.year + ")" : ""));
+
+      return findResult(titles, isTv).then(function (result) {
+        if (!result) {
+          console.log(tag + " Eslesen sayfa bulunamadi");
+          return [];
+        }
+
+        console.log(tag + " Bulundu: " + result.title + " (" + result.slug + ")");
+
+        return getPage(result.slug, s, e, isTv).then(function (epData) {
+          if (!epData) {
+            console.log(tag + " Sayfa alinamadi");
+            return [];
+          }
+
+          console.log(tag + " Embed: " + epData.url);
+
+          if (epData.type === "vidmixi") {
+            return resolveVidmixi(epData.url).then(function (stream) {
+              if (!stream) {
+                console.log(tag + " Akis cozulumedi");
+                return [];
+              }
+
+              var display = info.title + (info.year ? " (" + info.year + ")" : "");
+              if (isTv) display += " S" + s + "E" + e;
+
+              var headers = { "User-Agent": UA, "Referer": epData.url };
+
+              var stream = {
+                name: "FullHDFilmizlesene - 1080p",
+                title: display,
+                url: stream.url,
+                quality: "Auto",
+                isM3u8: true,
+                type: "hls",
+                language: "tr",
+                provider: "fullhdfilmizlesene",
+                headers: headers,
+                subtitles: stream.subtitles || [],
+                behaviorHints: { bingeGroup: "fullhdfilmizlesene-" + result.slug }
+              };
+
+              console.log(tag + " Kaynak bulundu: 1 kaynak");
+              return [stream];
+            });
+          }
+
+          console.log(tag + " Desteklenmeyen embed türu");
+          return [];
+        });
+      });
+    }).catch(function (err) {
+      console.log(tag + " Hata: " + (err && err.message));
+      return [];
+    });
+  }
+
+  // -------------------------------------------------------------- TMDB (inline)
+
+  function tmdbInfo(tmdbId, isTv, apiKey) {
+    var path = isTv ? "tv" : "movie";
+    var url = "https://api.themoviedb.org/3/" + path + "/" + encodeURIComponent(tmdbId) +
+      "?api_key=" + encodeURIComponent(apiKey) +
+      "&language=tr-TR&append_to_response=alternative_titles";
+    return fetchText(url, { "User-Agent": UA, Accept: "application/json" }).then(function (txt) {
+      if (!txt) return null;
+      var d;
+      try { d = JSON.parse(txt); } catch (e) { return null; }
+      if (!d || d.success === false) return null;
+
+      var main = isTv ? (d.name || "") : (d.title || "");
+      var original = isTv ? (d.original_name || "") : (d.original_title || "");
+      var altList = (d.alternative_titles && (isTv ? d.alternative_titles.results : d.alternative_titles.titles)) || [];
+      var altTitles = [];
+      for (var i = 0; i < altList.length && altTitles.length < 8; i++) {
+        var t = altList[i] && altList[i].title;
+        if (t && norm(t) !== norm(main) && altTitles.indexOf(t) === -1) altTitles.push(t);
+      }
+      var year = String((isTv ? d.first_air_date : d.release_date) || "").slice(0, 4);
+
+      var enUrl = "https://api.themoviedb.org/3/" + (isTv ? "tv" : "movie") + "/" + encodeURIComponent(tmdbId) +
+        "?api_key=" + encodeURIComponent(apiKey) + "&language=en-US&append_to_response=alternative_titles";
+      return fetchText(enUrl, { "User-Agent": UA, Accept: "application/json" }).then(function (enTxt) {
+        if (enTxt) {
+          var en;
+          try { en = JSON.parse(enTxt); } catch (e) { en = null; }
+          if (en && en.success !== false) {
+            var enMain = isTv ? (en.name || "") : (en.title || "");
+            var enOrig = isTv ? (en.original_name || "") : (en.original_title || "");
+            if (enMain && altTitles.indexOf(enMain) === -1 && norm(enMain) !== norm(main)) altTitles.push(enMain);
+            if (enOrig && altTitles.indexOf(enOrig) === -1 && norm(enOrig) !== norm(main)) altTitles.push(enOrig);
+            var enAltList = (en.alternative_titles && (isTv ? en.alternative_titles.results : en.alternative_titles.titles)) || [];
+            for (var j = 0; j < enAltList.length && altTitles.length < 12; j++) {
+              var at = enAltList[j] && enAltList[j].title;
+              if (at && altTitles.indexOf(at) === -1 && norm(at) !== norm(main)) altTitles.push(at);
+            }
+          }
+        }
+        return { title: main, original: original, alternatives: altTitles, year: year };
+      });
+    });
+  }
+
+  function onSettings() {
+    return [];
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { getStreams: getStreams };
+    module.exports = { getStreams: getStreams, onSettings: onSettings };
   } else {
     this.getStreams = getStreams;
+    this.onSettings = onSettings;
   }
 })();
+
+</parameter>
+</function>
