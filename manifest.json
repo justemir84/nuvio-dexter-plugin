@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.59",
+  "version": "2.3.60",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -18,7 +18,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.2.4",
+      "version": "1.2.5",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
@@ -314,8 +314,7 @@
     {
       "id": "4khdhub",
       "name": "4KHDHub",
-      "version": "1.0.5",
-      "description": "4K/UHD film ve dizi stream'leri",
+      "version": "1.0.6",
       "filename": "providers/4khdhub.js",
       "supportedTypes": [
         "movie",
@@ -436,8 +435,8 @@
     {
       "id": "hdfilmcehennemiland",
       "name": "Land",
-      "version": "1.0.1",
-      "description": "Land - film ve dizi; HLS, Türkçe dublaj/altyazı",
+      "version": "1.0.2",
+      "description": "HDFilmCehennemi.land - film ve dizi; HLS, Türkçe dublaj/altyazı",
       "filename": "providers/land.js",
       "supportedTypes": [
         "movie",
