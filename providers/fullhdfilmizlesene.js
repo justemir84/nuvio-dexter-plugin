@@ -273,7 +273,7 @@
               lang: lang,
               headers: { "User-Agent": UA, "Referer": embedUrl }
             });
-          }
+          });
         }
 
         return { url: set.video_location, subtitles: subtitles };
@@ -685,6 +685,3 @@
     this.onSettings = onSettings;
   }
 })();
-
-</parameter>
-</function>
