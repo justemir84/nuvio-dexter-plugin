@@ -114,11 +114,18 @@
   }
 
   function pickBest(links, title, year) {
-    var words = String(title).toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2; });
+    // Deduplicate words and require the longest (most distinctive) word to match
+    var rawWords = String(title).toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2; });
+    var words = [];
+    var seenW = {};
+    rawWords.forEach(function (w) { if (!seenW[w]) { seenW[w] = 1; words.push(w); } });
+    var longest = words.reduce(function (a, b) { return a.length >= b.length ? a : b; }, "");
     var best = null, bestScore = -1;
     for (var i = 0; i < links.length; i++) {
       var slug = links[i].replace(/^https?:\/\/[^\/]+\//, "").replace(/\/$/, "");
       var ns = norm(slug);
+      // Require the longest word to be present (rejects partial matches like 'dead' alone)
+      if (longest && ns.indexOf(norm(longest)) === -1) continue;
       var hit = 0;
       for (var w = 0; w < words.length; w++) {
         if (ns.indexOf(norm(words[w])) !== -1) hit++;
@@ -126,7 +133,7 @@
       var score = hit * 10 + ((year && links[i].indexOf(year) !== -1) ? 5 : 0);
       if (score > bestScore) { bestScore = score; best = links[i]; }
     }
-    var need = words.length >= 2 ? 2 : 1;
+    var need = words.length >= 3 ? Math.ceil(words.length / 2) : (words.length >= 2 ? 2 : 1);
     if (best && bestScore >= need * 10) return best;
     return null;
   }
