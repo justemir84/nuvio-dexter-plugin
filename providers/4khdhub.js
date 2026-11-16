@@ -38,18 +38,20 @@ var __async = (__this, __arguments, generator) => {
     step((generator = generator.apply(__this, __arguments)).next());
   });
 };
-var BASE_URL = "https://4khdhub.click";
+// Calisan domain: domains.json'dan gunellenir; yedek olarak 4khdhub.one kullanilir.
+var BASE_URL = "https://4khdhub.one";
 var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
-var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
 var domainCache = { url: BASE_URL, ts: 0 };
 function fetchLatestDomain() {
   return __async(this, null, function* () {
     const now = Date.now();
-    if (now - domainCache.ts < 36e5)
+    // Cache'i 10 dk tut (eski domain cok cok eskise sorun olmasin diye kisa)
+    if (now - domainCache.ts < 6e5)
       return domainCache.url;
     try {
-      const response = yield fetch(DOMAINS_URL);
+      const response = yield fetch(DOMAINS_URL, { headers: { "User-Agent": USER_AGENT } });
       const data = yield response.json();
       if (data && data["4khdhub"]) {
         domainCache.url = data["4khdhub"];
@@ -62,7 +64,7 @@ function fetchLatestDomain() {
 }
 function fetchText(_0) {
   return __async(this, arguments, function* (url, options = {}) {
-    const retries = options.retries !== void 0 ? options.retries : 2;
+    const retries = options.retries !== void 0 ? options.retries : 3;
     const delay = options.delay !== void 0 ? options.delay : 1e3;
     for (let i = 0; i <= retries; i++) {
       try {
@@ -197,8 +199,6 @@ function fetchPageUrl(name, year, isSeries) {
     console.log(`[4KHDHub] Parsing search results for type: ${targetType}`);
     const matchingCards = $(".movie-card").filter((_, el) => {
       const hasFormat = $(el).find(`.movie-card-format:contains("${targetType}")`).length > 0;
-      if (!hasFormat) {
-      }
       return hasFormat;
     }).filter((_, el) => {
       const metaText = $(el).find(".movie-card-meta").text();
@@ -334,14 +334,12 @@ function extractHubCloud(hubCloudUrl, baseMeta) {
       if (!href)
         return;
       if (text.includes("10Gbps") || text.includes("PixelServer") || href.includes("hubcloud.cx")) {
-        // Pixel/10Gbps sunuculari su an erisilemez (500) durumda; calismayan
-        // linkleri listeleyip karmasayi onlemek icin ayri tutuyoruz.
         pixelResults.push({
           source: "HubCloud 10Gbps",
           url: href,
           meta: currentMeta
         });
-      } else if (text.includes("Download File") || href.includes("r2.dev")) {
+      } else if (text.includes("Download File") || href.includes("r2.dev") || href.includes("workers.dev")) {
         results.push({
           source: "Direct R2",
           url: href,
@@ -361,8 +359,7 @@ function extractHubCloud(hubCloudUrl, baseMeta) {
         });
       }
     });
-    // Calisan (FSL/Direct R2/ZipDisk) link varsa onlar gosterilir; hicbiri
-    // yoksa pixel linkleri yedek olarak birakilir.
+    // Calisan linkler oncelikli; yoksa pixel/10Gbps yedek olarak dondurulur.
     if (results.length) return results;
     return pixelResults;
   });
@@ -410,7 +407,6 @@ function getStreams(tmdbId, type, season, episode) {
         if (sourceResult && sourceResult.url) {
           console.log(`[4KHDHub] Extracting from HubCloud: ${sourceResult.url}`);
           const extractedLinks = yield extractHubCloud(sourceResult.url, sourceResult.meta);
-          // Extra info from title (codec, audio, hdr, etc.)
           const titleInfo = sourceResult.meta.title || "";
           const codecMatch = titleInfo.match(/(HEVC|x265|x264|AV1|VP9)/i);
           const audioMatch = titleInfo.match(/(Dual Audio|Hindi|English|Tamil|Telugu|Multi Audio|AAC|DDP|DTS|Atmos)/gi);
@@ -420,17 +416,18 @@ function getStreams(tmdbId, type, season, episode) {
             audioMatch ? audioMatch.join(", ") : null,
             hdrMatch ? hdrMatch.join(", ") : null
           ].filter(Boolean).join(" | ");
-
-          return extractedLinks.map((link) => {
+          const allLinks = [...extractedLinks];
+          return allLinks.map((link) => {
             const detailLine = [
               sourceResult.meta.height ? `${sourceResult.meta.height}p` : "",
               formatBytes(link.meta.bytes || 0),
               extraInfo
             ].filter(Boolean).join(" | ");
-
-            const titleText =
-              `${link.meta.title || sourceResult.meta.title || ""}\n${detailLine}`;
-
+            const titleText = `${link.meta.title || sourceResult.meta.title || ""}\n${detailLine}`;
+            const streamHeaders = {
+              "User-Agent": USER_AGENT,
+              "Referer": pageUrl
+            };
             return {
               name: `4KHDHub - ${link.source}${sourceResult.meta.height ? ` ${sourceResult.meta.height}p` : ""}`,
               title: titleText,
@@ -438,6 +435,11 @@ function getStreams(tmdbId, type, season, episode) {
               description: titleText,
               url: link.url,
               quality: sourceResult.meta.height ? `${sourceResult.meta.height}p` : void 0,
+              isM3u8: false,
+              type: "direct",
+              language: "en",
+              provider: "4khdhub",
+              headers: streamHeaders,
               behaviorHints: {
                 bingeGroup: `4khdhub-${link.source}`
               }
