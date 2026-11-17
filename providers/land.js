@@ -128,8 +128,10 @@
         var out = [];
         var seen = {};
         links.forEach(function (l) {
+          if (l.indexOf("#") !== -1) return;
           var m = l.match(/\/(film|dizi)\/([^\/]+)\/?$/i);
           if (!m) return;
+          if (!m[2] || m[2].length < 3) return;
           if (seen[l]) return;
           seen[l] = true;
           out.push({ url: l.replace(/\/+$/, "/"), type: m[1].toLowerCase(), slug: m[2] });
