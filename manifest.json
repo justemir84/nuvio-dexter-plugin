@@ -334,7 +334,7 @@
     {
       "id": "4khdclub",
       "name": "4KHD Club",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "description": "4K-HD.Club arşivi; 4K REMUX (MKV) indirme bağlantıları ve sayfada bulunan video/ses/altyazı bilgileri. Film + dizi.",
       "filename": "providers/4khdclub.js",
       "supportedTypes": [
