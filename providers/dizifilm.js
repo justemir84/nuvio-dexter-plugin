@@ -6,18 +6,18 @@
  *   -> Dizifilm /api/search?q=  (film ve dizi sonuclari)
  *   -> /dizi/{slug}/sezon-{s}/bolum-{e}  (bolum sayfasi, server-rendered JSON icinde embed_player_url_1)
  *   -> vidmixi.com/embed/{id}  (JW Player sifreli yapilandirmesi)
- *   -> CryptoJS.AES.decrypt ile video_location cozulur (master.m3u8)
+ *   -> AES-256-CBC + EVP_BytesToKey (MD5) ile video_location cozulur (master.m3u8)
  *   -> video_location  (master HLS playlist, calisir)
  *
  * Notlar:
  * - Arama API'si /api/search?q= (JSON dondurur)
  * - Bolum sayfasi server-side render edilir; embed_player_url_1 HTML'de yer alir
  * - Vidmixi embed sayfasindaki bePlayer() cagrisindaki sifreli JSON cozulur
- *   (CryptoJS.AES-256-CBC, sifre = video ID, salt/iv = JSON'daki s ve iv alanlari)
+ *   (AES-256-CBC, sifre = video ID, salt/iv = JSON'daki s ve iv alanlari)
  * - Cozulmus video_location bir master.m3u8 URL'sidir
  * - Altyazilar: cozulmus yapilandirmadaki strSubtitles dizisinden alinir
- * - Hermes uyumlu: async/await yok, Promise zinciri kullanilir
- * - AES-256-CBC + EVP_BytesToKey (MD5) pure JavaScript ile uygulanmistir
+ * - Hermes/QuickJS uyumlu: async/await yok, Promise zinciri kullanilir
+ * - Sifreleme kutuphanesi yok: AES-256-CBC + EVP_BytesToKey (MD5) saf JS
  */
 (function () {
   "use strict";
@@ -30,115 +30,43 @@
 
   // ---------------------------------------------------------------- crypto: MD5
 
-  function _md5Raw(str) {
-    function add32(a, b) {
-      return (a + b) & 0xFFFFFFFF;
-    }
-    function bit_rotate(num, cnt) {
-      return (num << cnt) | (num >>> (32 - cnt));
-    }
-    function md5_ff(a, b, c, d, x, s, t) {
-      return add32(bit_rotate(add32(add32(a, f(b, c, d)), add32(x, t)), s), b);
-    }
-    function md5_gg(a, b, c, d, x, s, t) {
-      return add32(bit_rotate(add32(add32(a, g(b, c, d)), add32(x, t)), s), b);
-    }
-    function md5_hh(a, b, c, d, x, s, t) {
-      return add32(bit_rotate(add32(add32(a, h(b, c, d)), add32(x, t)), s), b);
-    }
-    function md5_ii(a, b, c, d, x, s, t) {
-      return add32(bit_rotate(add32(add32(a, md5_i(b, c, d)), add32(x, t)), s), b);
-    }
-    function f(b, c, d) { return (b & c) | ((~b) & d); }
-    function g(b, c, d) { return (b & d) | (c & (~b)); }
-    function h(b, c, d) { return b ^ c ^ d; }
-    function md5_i(b, c, d) { return c ^ (b | (~d)); }
+  var _MD5_K = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391];
+  var _MD5_S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
 
+  function _md5Raw(str) {
     var x = _strToArray(str);
     x[str.length >> 2] |= 0x80 << ((str.length % 4) * 8);
-    x[(((str.length + 8) >>> 6) << 4) + 14] = str.length * 8;
+    x[(((str.length + 8) >>> 6) << 4) + 14] = (str.length * 8) >>> 0;
+    x[(((str.length + 8) >>> 6) << 4) + 15] = ((str.length * 8) / 0x100000000) | 0;
 
     var a = 0x67452301;
     var b = 0xEFCDAB89;
     var c = 0x98BADCFE;
     var d = 0x10325476;
 
-    for (var i = 0; i < x.length; i += 16) {
+    for (var blk = 0; blk < x.length; blk += 16) {
       var olda = a, oldb = b, oldc = c, oldd = d;
 
-      a = md5_ff(a, b, c, d, x[i + 0], 7, 0xD76AA478);
-      d = md5_ff(d, a, b, c, x[i + 1], 12, 0xE8C7B756);
-      c = md5_ff(c, d, a, b, x[i + 2], 17, 0x242070DB);
-      b = md5_ff(b, c, d, a, x[i + 3], 22, 0xC1BDCEEE);
-      a = md5_ff(a, b, c, d, x[i + 4], 5, 0xF57C0FAF);
-      d = md5_ff(d, a, b, c, x[i + 5], 9, 0x4787C62A);
-      c = md5_ff(c, d, a, b, x[i + 6], 14, 0xA8304613);
-      b = md5_ff(b, c, d, a, x[i + 7], 20, 0xFD469501);
-      a = md5_ff(a, b, c, d, x[i + 8], 5, 0x698098D8);
-      d = md5_ff(d, a, b, c, x[i + 9], 9, 0x8B44F7AF);
-      c = md5_ff(c, d, a, b, x[i + 10], 14, 0xFFFF5BB1);
-      b = md5_ff(b, c, d, a, x[i + 11], 20, 0x895CD7BE);
-      a = md5_gg(a, b, c, d, x[i + 1], 5, 0xF57C0FAF);
-      d = md5_gg(d, a, b, c, x[i + 6], 9, 0xC040B340);
-      c = md5_gg(c, d, a, b, x[i + 11], 14, 0x242070DB);
-      b = md5_gg(b, c, d, a, x[i + 0], 20, 0xFD469501);
-      a = md5_gg(a, b, c, d, x[i + 5], 5, 0xF57C0FAF);
-      d = md5_gg(d, a, b, c, x[i + 10], 9, 0x4787C62A);
-      c = md5_gg(c, d, a, b, x[i + 15], 14, 0xA8304613);
-      b = md5_gg(b, c, d, a, x[i + 4], 20, 0xFD469501);
-      a = md5_gg(a, b, c, d, x[i + 9], 5, 0xF57C0FAF);
-      d = md5_gg(d, a, b, c, x[i + 14], 9, 0x4787C62A);
-      c = md5_gg(c, d, a, b, x[i + 3], 14, 0x242070DB);
-      b = md5_gg(b, c, d, a, x[i + 8], 20, 0xFD469501);
-      a = md5_gg(a, b, c, d, x[i + 13], 5, 0xF57C0FAF);
-      d = md5_gg(d, a, b, c, x[i + 2], 9, 0xF57C0FAF);
-      c = md5_gg(c, d, a, b, x[i + 7], 14, 0x242070DB);
-      b = md5_gg(b, c, d, a, x[i + 12], 20, 0xFD469501);
-      a = md5_gg(a, b, c, d, x[i + 0], 5, 0xF57C0FAF);
-      d = md5_gg(d, a, b, c, x[i + 7], 9, 0xF57C0FAF);
-      c = md5_gg(c, d, a, b, x[i + 14], 14, 0x242070DB);
-      b = md5_gg(b, c, d, a, x[i + 5], 20, 0xFD469501);
-      a = md5_gg(a, b, c, d, x[i + 12], 5, 0xF57C0FAF);
-      d = md5_gg(d, a, b, c, x[i + 3], 9, 0xF57C0FAF);
-      c = md5_gg(c, d, a, b, x[i + 10], 14, 0x242070DB);
-      b = md5_gg(b, c, d, a, x[i + 1], 20, 0xFD469501);
+      for (var i = 0; i < 64; i++) {
+        var f, g;
+        if (i < 16) { f = (b & c) | (~b & d); g = i; }
+        else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; }
+        else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16; }
+        else { f = c ^ (b | ~d); g = (7 * i) % 16; }
 
-      a = md5_hh(a, b, c, d, x[i + 5], 4, 0xF57C0FAF);
-      d = md5_hh(d, a, b, c, x[i + 8], 11, 0xE8C7B756);
-      c = md5_hh(c, d, a, b, x[i + 11], 16, 0x242070DB);
-      b = md5_hh(b, c, d, a, x[i + 14], 23, 0xFD469501);
-      a = md5_hh(a, b, c, d, x[i + 1], 4, 0xF57C0FAF);
-      d = md5_hh(d, a, b, c, x[i + 4], 11, 0xF57C0FAF);
-      c = md5_hh(c, d, a, b, x[i + 7], 16, 0x242070DB);
-      b = md5_hh(b, c, d, a, x[i + 10], 23, 0xFD469501);
-      a = md5_hh(a, b, c, d, x[i + 13], 4, 0xF57C0FAF);
-      d = md5_hh(d, a, b, c, x[i + 0], 11, 0xF57C0FAF);
-      c = md5_hh(c, d, a, b, x[i + 3], 16, 0x242070DB);
-      b = md5_hh(b, c, d, a, x[i + 6], 23, 0xFD469501);
-      a = md5_hh(a, b, c, d, x[i + 9], 4, 0xF57C0FAF);
-      d = md5_hh(d, a, b, c, x[i + 12], 11, 0xF57C0FAF);
-      c = md5_hh(c, d, a, b, x[i + 15], 16, 0x242070DB);
-      b = md5_hh(b, c, d, a, x[i + 2], 23, 0xFD469501);
+        var tmp = d;
+        d = c;
+        c = b;
+        var sum = (a + f + _MD5_K[i] + x[blk + g]) >>> 0;
+        b = (b + ((sum << _MD5_S[i]) | (sum >>> (32 - _MD5_S[i])))) >>> 0;
+        a = tmp;
+      }
 
-      a = md5_ii(a, b, c, d, x[i + 0], 6, 0xF57C0FAF);
-      d = md5_ii(d, a, b, c, x[i + 7], 10, 0xE8C7B756);
-      c = md5_ii(c, d, a, b, x[i + 14], 15, 0x242070DB);
-      b = md5_ii(b, c, d, a, x[i + 5], 21, 0xFD469501);
-      a = md5_ii(a, b, c, d, x[i + 12], 6, 0xF57C0FAF);
-      d = md5_ii(d, a, b, c, x[i + 3], 10, 0xF57C0FAF);
-      c = md5_ii(c, d, a, b, x[i + 10], 15, 0x242070DB);
-      b = md5_ii(b, c, d, a, x[i + 1], 21, 0xFD469501);
-      a = md5_ii(a, b, c, d, x[i + 8], 6, 0xF57C0FAF);
-      d = md5_ii(d, a, b, c, x[i + 15], 10, 0xF57C0FAF);
-      c = md5_ii(c, d, a, b, x[i + 6], 15, 0x242070DB);
-      b = md5_ii(b, c, d, a, x[i + 13], 21, 0xFD469501);
-
-      a = add32(a, olda);
-      b = add32(b, oldb);
-      c = add32(c, oldc);
-      d = add32(d, oldd);
+      a = (a + olda) >>> 0;
+      b = (b + oldb) >>> 0;
+      c = (c + oldc) >>> 0;
+      d = (d + oldd) >>> 0;
     }
-
     return _hex(a) + _hex(b) + _hex(c) + _hex(d);
   }
 
@@ -166,7 +94,9 @@
   }
 
   function _strToArray(str) {
-    var bin = [];
+    var totalWords = (((str.length + 8) >>> 6) << 4) + 16;
+    var bin = new Array(totalWords);
+    for (var j = 0; j < totalWords; j++) bin[j] = 0;
     for (var i = 0; i < str.length * 8; i += 8) {
       bin[i >> 5] |= (str.charCodeAt(i / 8) & 0xFF) << (i % 32);
     }
@@ -175,9 +105,9 @@
 
   function _hex(n) {
     var s = "", v;
-    for (var i = 7; i >= 0; i--) {
-      v = (n >> (i * 4)) & 0xF;
-      s += v.toString(16);
+    for (var i = 0; i < 4; i++) {
+      v = (n >>> (i * 8)) & 0xFF;
+      s += (v < 16 ? "0" : "") + v.toString(16);
     }
     return s;
   }
@@ -366,29 +296,19 @@
         }
         if (!config || !config.ct || !config.iv || !config.s) { console.log("[dizifilm] missing ct/iv/s"); return null; }
 
-        var CJ = (typeof CryptoJS !== "undefined") ? CryptoJS : (typeof require === "function" ? (function(){try{return require("crypto-js");}catch(e){return null;}})() : null);
-        if (!CJ) { console.log("[dizifilm] CryptoJS not available"); return null; }
+        var derived = _evpBytesToKey(videoId, config.s, 32, 16);
+
+        var ctStr = _atob(config.ct);
+        var ctBytes = [];
+        for (var ci = 0; ci < ctStr.length; ci++) ctBytes.push(ctStr.charCodeAt(ci) & 0xFF);
+
+        var ivHex = String(config.iv || "");
+        var ivBytes = [];
+        for (var hi = 0; hi < ivHex.length; hi += 2) ivBytes.push(parseInt(ivHex.substr(hi, 2), 16) & 0xFF);
 
         var plaintext = "";
         try {
-          var decrypted = CJ.AES.decrypt({ ciphertext: CJ.enc.Base64.parse(config.ct) }, (function(){
-            // EVP_BytesToKey
-            var salt = CJ.enc.Hex.parse(config.s);
-            var pwd = CJ.enc.Utf8.parse(videoId);
-            var derived = CJ.lib.WordArray.create();
-            var current = CJ.lib.WordArray.create();
-            while (derived.sigBytes < 32 + 16) {
-              var md5 = CJ.MD5(current.concat(pwd).concat(salt));
-              current = md5;
-              derived = derived.concat(md5);
-            }
-            return CJ.lib.WordArray.create(derived.words.slice(0, 8), 32);
-          })(), {
-            iv: CJ.enc.Hex.parse(config.iv),
-            mode: CryptoJS.mode.CBC,
-            padding: CryptoJS.pad.Pkcs7
-          });
-          plaintext = decrypted.toString(CJ.enc.Utf8);
+          plaintext = _bytesToUtf8(_aes256CbcDecrypt(ctBytes, derived.key, ivBytes));
         } catch (e) {
           console.log("[dizifilm] AES decrypt failed:", e.message);
           return null;
@@ -679,9 +599,26 @@
     }
     var padLen = plaintext[plaintext.length - 1];
     if (padLen > 0 && padLen <= 16) plaintext.length -= padLen;
-    var result = "";
-    for (var i = 0; i < plaintext.length; i++) result += String.fromCharCode(plaintext[i]);
-    return result;
+    return plaintext;
+  }
+
+  function _bytesToUtf8(bytes) {
+    var out = "", i = 0;
+    while (i < bytes.length) {
+      var b = bytes[i];
+      if (b < 0x80) {
+        out += String.fromCharCode(b); i += 1;
+      } else if (b < 0xE0) {
+        out += String.fromCharCode(((b & 0x1F) << 6) | (bytes[i + 1] & 0x3F)); i += 2;
+      } else if (b < 0xF0) {
+        out += String.fromCharCode(((b & 0x0F) << 12) | ((bytes[i + 1] & 0x3F) << 6) | (bytes[i + 2] & 0x3F)); i += 3;
+      } else {
+        var cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3F) << 12) | ((bytes[i + 2] & 0x3F) << 6) | (bytes[i + 3] & 0x3F);
+        cp -= 0x10000;
+        out += String.fromCharCode(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF)); i += 4;
+      }
+    }
+    return out;
   }
 
   if (typeof module !== "undefined" && module.exports) {
