@@ -501,7 +501,7 @@
     {
       "id": "dizifilm",
       "name": "DiziFilm",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Dizifilm.life; film ve dizi, Vidmixi HLS, Türkçe dublaj/altyazı",
       "filename": "providers/dizifilm.js",
       "supportedTypes": [
