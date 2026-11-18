@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.64",
+  "version": "2.3.65",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -334,8 +334,8 @@
     {
       "id": "4khdclub",
       "name": "4KHD Club",
-      "version": "1.2.0",
-      "description": "4K-HD.Club arşivi; 4K REMUX (MKV) indirme bağlantıları ve sayfada bulunan video/ses/altyazı bilgileri. Film + dizi.",
+      "version": "1.2.1",
+      "description": "4K-HD.Club arşivi; film + dizi; TakeFile direkt MKV/MP4/M4V/WebM/AVI/TS, kalite ve video/ses/HDR/altyazı bilgileri.",
       "filename": "providers/4khdclub.js",
       "supportedTypes": [
         "movie",
@@ -344,7 +344,12 @@
       "enabled": true,
       "hasSettings": false,
       "formats": [
-        "mkv"
+        "mkv",
+        "mp4",
+        "m4v",
+        "webm",
+        "avi",
+        "ts"
       ],
       "contentLanguage": [
         "en"
