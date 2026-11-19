@@ -486,8 +486,8 @@
     {
       "id": "fullhdfilmizlesene",
       "name": "FullHDFilmizlesene",
-      "version": "1.0.4",
-      "description": "FullHDFilmizlesene.co - film ve dizi; HLS, Türkçe dublaj/altyazı",
+      "version": "1.0.5",
+      "description": "FullHDFilmizlesene.now - film ve dizi; HLS, Türkçe dublaj/altyazı",
       "filename": "providers/fullhdfilmizlesene.js",
       "supportedTypes": [
         "movie",
@@ -501,7 +501,7 @@
       "contentLanguage": [
         "tr"
       ],
-      "logo": "https://www.google.com/s2/favicons?domain=fullhdfilmizlesene.co&sz=128"
+      "logo": "https://www.google.com/s2/favicons?domain=fullhdfilmizlesene.now&sz=128"
     },
     {
       "id": "dizifilm",
