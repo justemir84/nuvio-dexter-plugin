@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.68",
+  "version": "2.3.69",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -527,8 +527,8 @@
     {
       "id": "dizimom",
       "name": "DiziMom",
-      "description": "ddizimom.net - film (/film/), dizi (/dizi/) ve anime (/anime/) sayfalarından HLS (m3u8) kaynakları, Türkçe altyazı/dublaj",
-      "version": "1.0.0",
+      "description": "ddizimom.icu - film (/film/), dizi (/dizi/) ve anime (/anime/) sayfalarından HLS (m3u8) kaynakları, Türkçe altyazı/dublaj",
+      "version": "1.0.1",
       "filename": "providers/dizimom.js",
       "supportedTypes": [
         "movie",
