@@ -157,7 +157,113 @@
   }
 
   function norm(text) {
-    return String(text || "").toLowerCase().replace(/[^a-z0-9çğıöşü]+/g, " ").replace(/\s+/g, " ").trim();
+    var s = String(text || "").toLowerCase();
+    try {
+      if (typeof s.normalize === "function") s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    } catch (e) {}
+    return s.replace(/ı/g, "i").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function urlType(url) {
+    var path = String(url || "").toLowerCase().replace(/^https?:\/\/[^/]+/i, "").split(/[?#]/)[0];
+    var m = path.match(/(?:^|\/)(dizi|film)(?:\/|$)/i);
+    if (!m) return "";
+    return m[1].toLowerCase() === "dizi" ? "series" : "movie";
+  }
+
+  function isUrlType(url, desiredType) {
+    return urlType(url) === desiredType;
+  }
+
+  function itemPageUrl(item) {
+    if (!item) return "";
+    return String(item.url || item.href || item.permalink || item.link || "");
+  }
+
+  function itemSlug(item) {
+    if (!item) return "";
+    var slug = String(item.slug || "").trim();
+    var m;
+    if (slug) {
+      m = slug.match(/(?:^|\/)(?:dizi|film)\/([^/?#]+)/i);
+      if (m) return m[1];
+      return slug.replace(/^\/+|\/+$/g, "").split(/[?#]/)[0];
+    }
+    m = itemPageUrl(item).match(/\/(?:dizi|film)\/([^/?#]+)/i);
+    return m ? m[1] : "";
+  }
+
+  function itemType(item) {
+    if (!item) return "";
+    var raw = String(item.content_type || item.type || item.category || "").toLowerCase().replace(/[_-]+/g, " ").trim();
+    var declared = "";
+    if (/^(movie|film|feature film)$/.test(raw)) declared = "movie";
+    else if (/^(series|tv|tv show|tv series|dizi)$/.test(raw)) declared = "series";
+    var fromUrl = urlType(itemPageUrl(item));
+    if (declared && fromUrl && declared !== fromUrl) return "";
+    return fromUrl || declared;
+  }
+
+  function itemHasExpectedUrl(item, desiredType) {
+    var url = itemPageUrl(item);
+    if (url) return isUrlType(url, desiredType);
+    return !!itemSlug(item);
+  }
+
+  function itemYear(item) {
+    if (!item) return 0;
+    var values = [item.year, item.release_year, item.release_date, item.first_air_date, item.date];
+    for (var i = 0; i < values.length; i++) {
+      var m = String(values[i] || "").match(/(?:19|20)\d{2}/);
+      if (m) return parseInt(m[0], 10) || 0;
+    }
+    return 0;
+  }
+
+  function wordList(text) {
+    var words = norm(text).split(" ");
+    var out = [];
+    for (var i = 0; i < words.length; i++) {
+      if (words[i] && out.indexOf(words[i]) === -1) out.push(words[i]);
+    }
+    return out;
+  }
+
+  function titleSimilarity(itemTitle, title) {
+    var a = norm(itemTitle), b = norm(title);
+    if (a.length < 3 || b.length < 3) return 0;
+    if (a === b) return 1.0;
+    if (a.indexOf(b) === 0 || b.indexOf(a) === 0) return 0.8;
+    if (a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return 0.6;
+    var wa = wordList(a), wb = wordList(b);
+    var inter = 0;
+    for (var i = 0; i < wa.length; i++) if (wb.indexOf(wa[i]) !== -1) inter++;
+    var union = wa.length + wb.length - inter;
+    return union ? (inter / union) * 0.5 : 0;
+  }
+
+  function matchScore(item, titles, year) {
+    var itemTitle = item && (item.title || item.name || item.label) || "";
+    var best = 0;
+    for (var i = 0; i < titles.length; i++) {
+      var title = String(titles[i] || "");
+      if (norm(title).length < 3) continue;
+      var score = titleSimilarity(itemTitle, title);
+      if (score > best) best = score;
+    }
+
+    var wantedYear = parseInt(year, 10) || 0;
+    var foundYear = itemYear(item);
+    if (wantedYear && foundYear) {
+      var diff = Math.abs(foundYear - wantedYear);
+      if (diff === 0) best += 0.15;
+      else if (diff === 1) best += 0.05;
+      else if (diff <= 2) best -= 0.15;
+      else best -= 0.6;
+    } else if (wantedYear && !foundYear) {
+      best -= 0.1;
+    }
+    return Math.max(0, Math.min(1, best));
   }
 
   // -------------------------------------------------------------- searching
@@ -171,73 +277,75 @@
       });
   }
 
-  function matchScore(itemTitle, title) {
-    if (!itemTitle || !title) return 0;
-    var a = norm(itemTitle), b = norm(title);
-    if (!a || !b) return 0;
-    if (a === b) return 12;
-    if (a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return 7;
-    var words = b.split(" ").filter(function (w) { return w.length > 2; });
-    if (!words.length) return 0;
-    for (var i = 0; i < words.length; i++) {
-      if (a.indexOf(words[i]) === -1) return 0;
-    }
-    return 4;
-  }
-
-  function scoreItem(item, titles) {
-    var best = 0;
-    for (var i = 0; i < titles.length; i++) {
-      var t = titles[i];
-      if (!t) continue;
-      var s = matchScore(item.title, t);
-      if (s > best) best = s;
-    }
-    return best;
-  }
-
-  function findResult(titles, isTv) {
+  function findResult(titles, isTv, year) {
     var desiredType = isTv ? "series" : "movie";
-    var best = null, bestScore = 0;
-    var ordered = titles.filter(Boolean).slice(0, 10);
+    var ordered = [];
+    for (var i = 0; i < titles.length && ordered.length < 3; i++) {
+      var title = String(titles[i] || "").trim();
+      if (norm(title).length < 3) continue;
+      if (ordered.map(function (x) { return norm(x); }).indexOf(norm(title)) === -1) ordered.push(title);
+    }
+
+    console.log("[dizifilm] desiredType=", desiredType, "year=", year || "");
+    if (!ordered.length) return Promise.resolve(null);
+
+    var queries = [];
+    function addQuery(query) {
+      query = String(query || "").trim();
+      var key = norm(query);
+      if (key && queries.map(function (x) { return norm(x); }).indexOf(key) === -1) queries.push(query);
+    }
+    for (var q = 0; q < ordered.length; q++) {
+      if (year) addQuery(ordered[q] + " " + year);
+      addQuery(ordered[q]);
+    }
+    var words = ordered[0].split(/\s+/).filter(Boolean);
+    if (words.length > 2) addQuery(words.slice(0, 3).join(" "));
+    if (words.length > 1) addQuery(words.slice(0, 2).join(" "));
+
+    var candidates = [];
+    var seen = {};
+
+    function finish() {
+      var scored = candidates.map(function (item) {
+        return { item: item, score: matchScore(item, ordered, year) };
+      });
+      scored.sort(function (a, b) { return b.score - a.score; });
+      console.log("[dizifilm] pool=", candidates.slice(0, 10).map(function (x) {
+        return { title: x.title, year: itemYear(x) || "", url: itemPageUrl(x) || "" };
+      }));
+      console.log("[dizifilm] scored=", scored.slice(0, 5).map(function (x) {
+        return { title: x.item.title || x.item.name || "", year: itemYear(x.item) || "", score: x.score, url: itemPageUrl(x.item) || "" };
+      }));
+      var best = scored[0];
+      if (!best || best.score < 0.65) return null;
+      if (scored[1] && Math.abs(best.score - scored[1].score) < 0.05 && !(parseInt(year, 10) || 0)) return null;
+      if (itemType(best.item) !== desiredType || !itemHasExpectedUrl(best.item, desiredType)) return null;
+      var slug = itemSlug(best.item);
+      var section = desiredType === "series" ? "dizi" : "film";
+      var checkUrl = itemPageUrl(best.item) || (BASE + "/" + section + "/" + slug);
+      if (!slug || !isUrlType(checkUrl, desiredType)) return null;
+      return best.item;
+    }
 
     function searchAll(idx) {
-      if (idx >= ordered.length) {
-        if (best) return Promise.resolve(best);
-        return prefixAll(0, null);
-      }
-      return searchSite(ordered[idx]).then(function (items) {
-        var pool = items.filter(function (it) { return it.content_type === desiredType; });
-        if (!pool.length) pool = items;
+      if (idx >= queries.length) return Promise.resolve(finish());
+      return searchSite(queries[idx]).then(function (items) {
+        items = Array.isArray(items) ? items : [];
+        var pool = items.filter(function (it) {
+          return itemType(it) === desiredType && itemHasExpectedUrl(it, desiredType);
+        });
+        console.log("[dizifilm] query=", queries[idx], "typed pool=", pool.length);
         for (var i = 0; i < pool.length; i++) {
-          var s = scoreItem(pool[i], titles);
-          if (s > bestScore) { bestScore = s; best = pool[i]; }
+          var item = pool[i];
+          var key = String(item.id || item.slug || itemPageUrl(item) || (item.title || item.name || "") + "|" + itemYear(item));
+          if (!seen[key]) {
+            seen[key] = true;
+            candidates.push(item);
+          }
         }
-        if (bestScore >= 10) return Promise.resolve(best);
         return searchAll(idx + 1);
       }).catch(function () { return searchAll(idx + 1); });
-    }
-
-    function prefixAll(pIdx, found) {
-      if (found) return Promise.resolve(found);
-      if (pIdx >= 2 || !ordered.length) return Promise.resolve(best);
-      var words = String(ordered[0] || "").split(/\s+/).filter(Boolean);
-      var prefix = null;
-      if (pIdx === 0 && words.length > 2) prefix = words.slice(0, 3).join(" ");
-      if (pIdx === 1 && words.length > 1) prefix = words.slice(0, 2).join(" ");
-      if (!prefix) return prefixAll(pIdx + 1, null);
-      return searchSite(prefix).then(function (items) {
-        var pool = items.filter(function (it) { return it.content_type === desiredType; });
-        if (!pool.length) pool = items;
-        var localBest = null, localScore = 0;
-        for (var i = 0; i < pool.length; i++) {
-          var s = scoreItem(pool[i], titles);
-          if (s > localScore) { localScore = s; localBest = pool[i]; }
-        }
-        if (localBest && localScore > bestScore) { best = localBest; bestScore = localScore; }
-        if (bestScore >= 7) return Promise.resolve(best);
-        return prefixAll(pIdx + 1, null);
-      }).catch(function () { return prefixAll(pIdx + 1, null); });
     }
 
     return searchAll(0);
@@ -245,13 +353,20 @@
 
   // -------------------------------------------------------------- episode page
 
-  function getEpisodePage(slug, season, episode, isTv) {
-    var url;
-    if (isTv) {
-      url = BASE + "/dizi/" + slug + "/sezon-" + season + "/bolum-" + episode;
-    } else {
-      url = BASE + "/film/" + slug;
+  function getEpisodePage(item, season, episode, isTv) {
+    var desiredType = isTv ? "series" : "movie";
+    var sourceUrl = itemPageUrl(item);
+    if (sourceUrl && !isUrlType(sourceUrl, desiredType)) {
+      console.log("[dizifilm] URL type mismatch:", sourceUrl, desiredType);
+      return Promise.resolve(null);
     }
+    var slug = itemSlug(item);
+    if (!slug) return Promise.resolve(null);
+    var section = isTv ? "dizi" : "film";
+    var url = isTv
+      ? BASE + "/dizi/" + slug + "/sezon-" + season + "/bolum-" + episode
+      : BASE + "/film/" + slug;
+    if (!isUrlType(url, desiredType)) return Promise.resolve(null);
     return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" })
       .then(function (html) {
         if (!html) { console.log("[dizifilm] HTML null"); return null; }
@@ -268,14 +383,10 @@
           if (m2) embedUrl = m2[0];
         }
         if (!embedUrl) { console.log("[dizifilm] embedUrl null"); return null; }
-        var embedId = embedUrl.match(/\/embed\/([a-z0-9]+)$/i);
-        if (!embedId) { console.log("[dizifilm] embedId null"); return null; }
-        console.log("[dizifilm] Found embedUrl:", embedUrl);
-        return { embedUrl: embedUrl, embedId: embedId[1], html: html };
+        var idMatch = embedUrl.match(/\/embed\/([a-z0-9]+)/i);
+        return { embedUrl: embedUrl, embedId: idMatch ? idMatch[1] : "" };
       });
   }
-
-  // -------------------------------------------------------------- vidmixi embed decryption
 
   function resolveVidmixi(embedUrl, embedId) {
     return fetchText(embedUrl, { "User-Agent": UA, Referer: EMBED_REFERER })
@@ -363,11 +474,16 @@
       }
 
       var titles = [info.title, info.original].concat(info.alternatives || []);
-      titles = titles.filter(function (t, i) { return t && titles.indexOf(t) === i; });
+      var uniqueTitles = [];
+      for (var ti = 0; ti < titles.length; ti++) {
+        var candidateTitle = String(titles[ti] || "").trim();
+        if (candidateTitle && uniqueTitles.map(function (x) { return norm(x); }).indexOf(norm(candidateTitle)) === -1) uniqueTitles.push(candidateTitle);
+      }
+      titles = uniqueTitles.slice(0, 3);
 
       console.log(tag + " Araniyor: " + titles.join(" | ") + (info.year ? " (" + info.year + ")" : ""));
 
-      return findResult(titles, isTv).then(function (result) {
+      return findResult(titles, isTv, info.year).then(function (result) {
         if (!result) {
           console.log(tag + " Eslesen sonuc bulunamadi");
           return [];
@@ -375,7 +491,7 @@
 
         console.log(tag + " Bulundu: " + result.title + " (" + result.slug + ")");
 
-        return getEpisodePage(result.slug, s, e, isTv).then(function (epData) {
+        return getEpisodePage(result, s, e, isTv).then(function (epData) {
           if (!epData) {
             console.log(tag + " Bolum sayfasi alinamadi");
             return [];
