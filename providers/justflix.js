@@ -1,11 +1,11 @@
 /**
- * justflix - Diziyou (diziyou.one) provider for Nuvio
+ * justflix - Diziyou (diziyou.love) provider for Nuvio
  *
  * Akis:
  *   TMDB id -> TMDB basligi -> dogrudan slug veya /?s= aramasi
  *   -> /{base}-{s}-sezon-{e}-bolum/ (seri sayfasindaki baglantidan)
  *   -> /player/{id}_tr.html (Dublaj), /player/{id}.html (TR Altyazili),
- *      /player/{id}_enSub.html (EN Altyazili) -> storage.diziyou.one .../play.m3u8
+ *      /player/{id}_enSub.html (EN Altyazili) -> storage.diziyou.love .../play.m3u8
  *   -> master playlist (HLS m3u8) + <track> altyazilari
  *
  * Notlar:
@@ -17,7 +17,7 @@
 (function () {
   "use strict";
 
-  var BASE = "https://www.diziyou.one";
+  var BASE = "https://www.diziyou.love";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
   var TIMEOUT = 15000;
@@ -111,7 +111,7 @@
       if (!html) return [];
       var out = [], seen = {};
       // Arama sonuclari: <div id="list-series"> icindeki baslik baglantilari
-      var re = /<div id="list-series">[\s\S]*?id="categorytitle">\s*<a href="https:\/\/www\.diziyou\.one\/([a-z0-9\-]+)\/">([\s\S]*?)<\/a>/g;
+      var re = /<div id="list-series">[\s\S]*?id="categorytitle">\s*<a href="https:\/\/www\.diziyou\.love\/([a-z0-9\-]+)\/">([\s\S]*?)<\/a>/g;
       var m;
       while ((m = re.exec(html)) !== null) {
         if (!seen[m[1]]) {
@@ -182,7 +182,7 @@
   }
 
   function findEpisodePath(seriesHtml, season, episode) {
-    var re = /href="https:\/\/www\.diziyou\.one\/([a-z0-9\-]+)-(\d+)-sezon-(\d+)-bolum\/"/g;
+    var re = /href="https:\/\/www\.diziyou\.love\/([a-z0-9\-]+)-(\d+)-sezon-(\d+)-bolum\/"/g;
     var m;
     while ((m = re.exec(String(seriesHtml))) !== null) {
       if (parseInt(m[2], 10) === season && parseInt(m[3], 10) === episode) return m[1] + "-" + m[2] + "-sezon-" + m[3] + "-bolum";
@@ -207,7 +207,7 @@
   function resolvePlayer(playerUrl, epUrl, label, display, tag) {
     return fetchText(playerUrl, { "User-Agent": UA, Referer: epUrl }).then(function (playerHtml) {
       if (!playerHtml) return null;
-      var src = playerHtml.match(/<source[^>]+src="(https:\/\/storage\.diziyou\.one\/[^"]+\.m3u8)"/i);
+      var src = playerHtml.match(/<source[^>]+src="(https:\/\/storage\.diziyou\.love\/[^"]+\.m3u8)"/i);
       if (!src) return null;
       var master = src[1];
       var subs = [];
@@ -255,7 +255,7 @@
         var epUrl = BASE + "/" + epPath + "/";
         return fetchText(epUrl, { "User-Agent": UA, Referer: target.url }).then(function (epHtml) {
           if (!epHtml) { console.log(tag + " Bolum sayfasi alinamadi: " + epUrl); return []; }
-          var iframe = epHtml.match(/<iframe[^>]+src="(https:\/\/www\.diziyou\.one\/player\/[^"]+)"/i);
+          var iframe = epHtml.match(/<iframe[^>]+src="(https:\/\/www\.diziyou\.love\/player\/[^"]+)"/i);
           if (!iframe) { console.log(tag + " Player iframe bulunamadi"); return []; }
           var basePlayer = iframe[1].split("?")[0];
           var baseNoExt = basePlayer.replace(/\.html$/, "");
