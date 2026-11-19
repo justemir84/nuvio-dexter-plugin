@@ -15,7 +15,7 @@
   "use strict";
 
   // Domain değişirse SADECE bu satırı değiştir — dosyanın geri kalanı otomatik uyum sağlar.
-  var SITE_DOMAIN = "kmmovies.beer";
+  var SITE_DOMAIN = "kmmovies.quest";
   var BASE = "https://" + SITE_DOMAIN;
   var SITE_RE = SITE_DOMAIN.replace(/\./g, "\\.");
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
@@ -50,6 +50,34 @@
 
   function norm(s) {
     return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  }
+
+  function decodeEntities(s) {
+    var str = String(s || "");
+    str = str.replace(/&#x([0-9a-f]+);/gi, function (_, h) { return String.fromCharCode(parseInt(h, 16)); });
+    str = str.replace(/&#(\d+);/g, function (_, d) { return String.fromCharCode(parseInt(d, 10)); });
+    return str.replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#0*39;/gi, "'")
+      .replace(/&apos;/gi, "'").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&nbsp;/gi, " ");
+  }
+
+  function normTitle(s) {
+    return decodeEntities(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  }
+
+  function stripLeadingThe(s) {
+    return String(s || "").replace(/^the/, "");
+  }
+
+  // 0 = eslesme yok; yuksek = daha iyi
+  function titleScore(postTitle, title) {
+    var a = stripLeadingThe(normTitle(postTitle));
+    var b = stripLeadingThe(normTitle(title));
+    if (!a || !b || b.length < 3) return 0;
+    if (a === b) return 100;
+    if (a.indexOf(b) === 0) return 90;              // site basligi TMDB basligiyla basliyor
+    if (b.indexOf(a) === 0 && a.length >= 4) return 70;
+    if (a.indexOf(b) !== -1) return 50;
+    return 0;
   }
 
   function parseQuality(label) {
@@ -91,8 +119,34 @@
     return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   }
 
-  // --- kmmovies search: /search/<query>/ ---
-  function searchOnce(query) {
+  // --- kmmovies search: WordPress REST API (title + link, yapilandirilmis) ---
+  function searchWp(query) {
+    var url = BASE + "/wp-json/wp/v2/posts?search=" + encodeURIComponent(query) +
+      "&per_page=20&_fields=id,title,link";
+    return fetchTimeout(url, { headers: headers(BASE + "/") })
+      .then(function (r) {
+        if (!r.ok) throw new Error("WP " + r.status);
+        return r.text();
+      })
+      .then(function (txt) {
+        var arr;
+        try { arr = JSON.parse(txt); } catch (e) { return []; }
+        if (!Array.isArray(arr)) return [];
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+          var p = arr[i];
+          var t = p && p.title && (p.title.rendered || p.title);
+          if (t && p.link) {
+            out.push({ title: decodeEntities(String(t).replace(/<[^>]+>/g, " ")), url: p.link });
+          }
+        }
+        return out;
+      })
+      .catch(function () { return []; });
+  }
+
+  // --- yedek: /search/<query>/ HTML kartlari (aria-label + href) ---
+  function searchHtml(query) {
     var url = BASE + "/search/" + encodeURIComponent(query) + "/";
     return fetchTimeout(url, { headers: headers(BASE + "/") })
       .then(function (r) {
@@ -100,71 +154,62 @@
         return r.text();
       })
       .then(function (html) {
-        var links = [];
-        var re = new RegExp('<a[^>]+href="(https://' + SITE_RE + '/[^"]+/)"[^>]*>', 'gi');
+        var out = [];
+        var re = /<article[^>]*aria-label="([^"]*)"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"/gi;
         var m;
         while ((m = re.exec(html)) !== null) {
-          if (links.indexOf(m[1]) === -1) links.push(m[1]);
+          out.push({ title: decodeEntities(m[1]), url: m[2] });
         }
-        return links.filter(function (u) {
-          if (u === BASE + "/") return false;
-          return !SKIP_PATH.test(u);
-        });
-      });
+        if (out.length) return out;
+        var re2 = /<a[^>]+href="(https:\/\/kmmovies\.quest\/[^"]+\/)"[^>]*aria-label="([^"]+)"/gi;
+        while ((m = re2.exec(html)) !== null) {
+          out.push({ title: decodeEntities(m[2]), url: m[1] });
+        }
+        return out;
+      })
+      .catch(function () { return []; });
   }
 
-  function pickBest(links, title, year) {
-    // Deduplicate words and require the longest (most distinctive) word to match
-    var rawWords = String(title).toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2; });
-    var words = [];
-    var seenW = {};
-    rawWords.forEach(function (w) { if (!seenW[w]) { seenW[w] = 1; words.push(w); } });
-    var longest = words.reduce(function (a, b) { return a.length >= b.length ? a : b; }, "");
-    var best = null, bestScore = -1;
-    for (var i = 0; i < links.length; i++) {
-      var slug = links[i].replace(/^https?:\/\/[^\/]+\//, "").replace(/\/$/, "");
-      var ns = norm(slug);
-      // Require the longest word to be present (rejects partial matches like 'dead' alone)
-      if (longest && ns.indexOf(norm(longest)) === -1) continue;
-      var hit = 0;
-      for (var w = 0; w < words.length; w++) {
-        if (ns.indexOf(norm(words[w])) !== -1) hit++;
-      }
-      var score = hit * 10 + ((year && links[i].indexOf(year) !== -1) ? 5 : 0);
-      if (score > bestScore) { bestScore = score; best = links[i]; }
+  function pickBestTitle(posts, title) {
+    var best = null, bestScore = 0;
+    for (var i = 0; i < posts.length; i++) {
+      var s = titleScore(posts[i].title, title);
+      if (s > bestScore) { bestScore = s; best = posts[i].url; }
     }
-    var need = words.length >= 3 ? Math.ceil(words.length / 2) : (words.length >= 2 ? 2 : 1);
-    if (best && bestScore >= need * 10) return best;
-    return null;
+    return bestScore >= 50 ? best : null;
   }
 
   function searchDetailUrl(title, year) {
     var words = String(title).split(/[^A-Za-z0-9]+/).filter(function (w) { return w; });
     var queries = [];
-    var full = slugify(title);
-    if (full) queries.push(full);
-    if (words.length >= 2) {
-      var two = slugify(words.slice(0, 2).join(" "));
-      if (two && queries.indexOf(two) === -1) queries.push(two);
-    }
-    if (words.length >= 3) {
-      var three = slugify(words.slice(0, 3).join(" "));
-      if (three && queries.indexOf(three) === -1) queries.push(three);
-    }
-    // Yeni sitede tireli çok kelimeli slug 0 sonuç verebiliyor; ayırt edici
-    // tek kelimeleri de dene (uzundan kısaya, pickBest zaten eler).
-    var singles = words.filter(function (w) { return w.length > 3; })
-      .sort(function (a, b) { return b.length - a.length; });
-    singles.forEach(function (w) {
-      var q = slugify(w);
+    function addQuery(q) {
+      q = String(q || "").trim();
       if (q && queries.indexOf(q) === -1) queries.push(q);
-    });
+    }
+    // REST API bulbosluklu sorgulamayi daha iyi isler
+    addQuery(title);
+    if (words.length >= 2) addQuery(words.slice(0, 2).join(" "));
+    if (words.length >= 3) addQuery(words.slice(0, 3).join(" "));
+    // "The X" -> "X" varyantlari
+    if (words.length >= 2 && words[0].toLowerCase() === "the") {
+      addQuery(words.slice(1).join(" "));
+      if (words.length >= 3) addQuery(words.slice(1, 3).join(" "));
+    }
+    // ayirt edici tek kelimeler (uzundan kisa)
+    var singles = words.filter(function (w) { return w.length > 4; })
+      .sort(function (a, b) { return b.length - a.length; });
+    singles.slice(0, 2).forEach(function (w) { addQuery(w); });
+
     var chain = Promise.resolve(null);
     queries.forEach(function (q) {
       chain = chain.then(function (found) {
         if (found) return found;
-        return searchOnce(q).then(function (links) {
-          return pickBest(links, title, year);
+        return searchWp(q).then(function (posts) {
+          var hit = pickBestTitle(posts, title);
+          if (hit) return hit;
+          return searchHtml(q).then(function (posts2) {
+            return pickBestTitle(posts2, title);
+          });
         });
       });
     });
@@ -211,9 +256,11 @@
 
   // --- w3 page html -> watch-online / pixeldrain / skydrop / hubcloud hrefs ---
   function parseW3(html) {
-    var res = { watch: null, pixeldrain: [], skydrop: [], hubcloud: [] };
+    var res = { watch: null, download99: null, pixeldrain: [], skydrop: [], hubcloud: [] };
     var m = html.match(/https:\/\/z1\.kmphotos\.cv\/online\.php\?file=[^"'\s<]+/);
     if (m) res.watch = m[0];
+    var m99 = html.match(/https:\/\/z1\.kmphotos\.cv\/download99\.php\?file=[^"'\s<]+/);
+    if (m99) res.download99 = m99[0];
     var re2 = /https:\/\/pixeldrain\.com\/u\/([A-Za-z0-9]+)/g;
     var p;
     while ((p = re2.exec(html)) !== null) {
@@ -367,6 +414,55 @@
     return true;
   }
 
+  // --- download99.php: landing sayfa -> ?dl=r2 / ?dl=worker -> direkt dosya ---
+  function resolveDownload99(d99Url) {
+    var origin = "https://z1.kmphotos.cv";
+    return fetchTimeout(d99Url, { headers: headers("https://w3.magiclinks.lol/") })
+      .then(function (r) {
+        if (!r.ok) throw new Error("d99 " + r.status);
+        return r.text();
+      })
+      .then(function (html) {
+        var links = [];
+        var re = /href="([^"]+)"/gi;
+        var m;
+        while ((m = re.exec(html)) !== null) {
+          var u = m[1].replace(/&amp;/g, "&");
+          if (u.indexOf("dl=") === -1) continue;
+          if (u.indexOf("http") !== 0) {
+            u = origin + (u.charAt(0) === "/" ? u : "/download99.php" + u);
+          }
+          if (links.indexOf(u) === -1) links.push(u);
+        }
+        links.sort(function (a, b) {
+          var ra = a.indexOf("dl=r2") !== -1 ? 0 : 1;
+          var rb = b.indexOf("dl=r2") !== -1 ? 0 : 1;
+          return ra - rb;
+        });
+        var chain = Promise.resolve(null);
+        links.slice(0, 2).forEach(function (u) {
+          chain = chain.then(function (found) {
+            if (found) return found;
+            return fetchTimeout(u, { headers: headers(d99Url), redirect: "manual" })
+              .then(function (r) {
+                var loc = null;
+                try { loc = r.headers.get("location"); } catch (e) {}
+                if (loc) {
+                  if (loc.charAt(0) === "/") loc = origin + loc;
+                  return isFileUrl(loc) ? loc : null;
+                }
+                var ru = String((r && r.url) || "");
+                if (ru && ru !== u && isFileUrl(ru)) return ru;
+                return null;
+              })
+              .catch(function () { return null; });
+          });
+        });
+        return chain;
+      })
+      .catch(function () { return null; });
+  }
+
   // resolve one w3 link into 0..n direct streams (R2 / Pixeldrain / HubCloud / Skydrop)
   function resolveW3Link(w3, referer, allowSkydrop) {
     return fetchTimeout(w3.url, { headers: headers(referer) })
@@ -379,6 +475,11 @@
         var jobs = [];
         if (parsed.watch) {
           jobs.push(resolveWatchOnline(parsed.watch).then(function (direct) {
+            return direct ? [{ url: direct, via: "R2", quality: w3.quality, size: w3.size, label: w3.label }] : [];
+          }));
+        }
+        if (parsed.download99) {
+          jobs.push(resolveDownload99(parsed.download99).then(function (direct) {
             return direct ? [{ url: direct, via: "R2", quality: w3.quality, size: w3.size, label: w3.label }] : [];
           }));
         }
