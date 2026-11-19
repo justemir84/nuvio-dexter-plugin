@@ -1,5 +1,5 @@
 /**
- * dizimom - DiziMom (ddizimom.net) provider for Nuvio
+ * dizimom - DiziMom (ddizimom.icu) provider for Nuvio
  *
  * Akis (DiziBal ile ayni Pilavyer altyapisi):
  *   TMDB id -> TMDB basligi (tr/en) -> site aramasi (/ara?q=) veya dogrudan slug
@@ -20,7 +20,7 @@
 (function () {
   "use strict";
 
-  var BASE = "https://ddizimom.net";
+  var BASE = "https://ddizimom.icu";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
   var TIMEOUT = 15000;
@@ -150,7 +150,7 @@
     var url = BASE + "/ara?q=" + encodeURIComponent(query);
     return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" }).then(function (html) {
       if (!html) return [];
-      var re = /<a href="https:\/\/ddizimom\.net\/(film|dizi|anime)\/([^"\/]+)"[^>]*class="group block"[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<p[^>]*>([^<]*)<\/p>/g;
+      var re = /<a href="https:\/\/ddizimom\.icu\/(film|dizi|anime)\/([^"\/]+)"[^>]*class="group block"[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<p[^>]*>([^<]*)<\/p>/g;
       var out = [], m;
       while ((m = re.exec(html)) !== null) {
         out.push({
