@@ -549,7 +549,7 @@
       "id": "justflix",
       "name": "JustFlix",
       "description": "JustFlix - TR Dublaj + TR/EN altyazılı bölüm kaynakları, Türkçe dublaj destekler",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "filename": "providers/justflix.js",
       "supportedTypes": [
         "tv"
