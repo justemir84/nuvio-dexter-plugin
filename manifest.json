@@ -486,17 +486,17 @@
     {
       "id": "fullhdfilmizlesene",
       "name": "FullHDFilmizlesene",
-      "version": "1.0.5",
-      "description": "FullHDFilmizlesene.now - film ve dizi; HLS, Türkçe dublaj/altyazı",
+      "version": "1.0.7",
+      "description": "FullHDFilmizlesene.co - film ve dizi; HLS, Türkçe dublaj/altyazı",
       "filename": "providers/fullhdfilmizlesene.js",
       "supportedTypes": [
         "movie",
-        "tv"
       ],
       "enabled": true,
       "hasSettings": false,
       "formats": [
         "m3u8"
+        "mp4"
       ],
       "contentLanguage": [
         "tr"
