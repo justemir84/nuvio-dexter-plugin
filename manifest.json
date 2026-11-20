@@ -490,7 +490,7 @@
       "description": "FullHDFilmizlesene.co - film ve dizi; HLS, Türkçe dublaj/altyazı",
       "filename": "providers/fullhdfilmizlesene.js",
       "supportedTypes": [
-        "movie",
+        "movie"
       ],
       "enabled": true,
       "hasSettings": false,
