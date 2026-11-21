@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.79",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
+  "version": "2.3.80",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -425,26 +425,6 @@
         "tr",
         "en"
       ]
-    },
-    {
-      "id": "hdfilmcehennemiland",
-      "name": "Land",
-      "version": "1.0.3",
-      "description": "HDFilmCehennemi.land - film ve dizi; HLS, Türkçe dublaj/altyazı",
-      "filename": "providers/land.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.land&sz=128"
     },
     {
       "id": "dizibal",
