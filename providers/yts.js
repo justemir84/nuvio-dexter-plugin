@@ -1,45 +1,89 @@
 /**
- * yts - YTS torrent provider for Nuvio (en.yts-official.com)
- * Flow: TMDB -> title/year -> ?api=torrents -> magnet list
+ * yts - YTS torrent provider for Nuvio
+ * Flow: TMDB -> imdb_id / title -> YTS v2 API /list_movies.json -> magnet list
  *
  * Returns magnet URIs (same contract as the Torrentio provider).
  * Magnets need a debrid service or a P2P-capable Nuvio build;
  * without one Nuvio reports "torrent streaming not supported".
  *
- * Dynamic domain: domain'i DOMAINS_URL'deki JSON'dan çeker.
- * Kendi domains.json'ni oluşturup DOMAINS_URL'yi güncelle.
- * Örnek domains.json: { "yts": "https://en.yts-official.com" }
+ * Domain:
+ *   Birden fazla API base sirayla denenir; ilk calisan saklanir.
+ *   DOMAINS_URL bos birakilisa yerlesik liste kullanilir. İstersen tek
+ *   noktadan domain degistirmek icin domains.json tanimlayabilirsin:
+ *     { "yts": "https://yts.lt" }
+ *     { "yts": "https://movies-api.accel.li/api/v2" }
+ *   Ornek: DOMAINS_URL = "https://raw.githubusercontent.com/<user>/<repo>/main/domains.json";
  *
  * Hermes-safe: Promise chains only, no async/await, no generators, no deps.
  */
 (function () {
   "use strict";
 
-  var BASE = "https://en.yts-official.com";
-  var DOMAINS_URL = "https://raw.githubusercontent.com/KULLANICI_ADI/REPO_ADI/main/domains.json";
+  var API_BASES = [
+    "https://movies-api.accel.li/api/v2",
+    "https://yts.lt/api/v2",
+    "https://yts.am/api/v2",
+    "https://yts.gg/api/v2",
+    "https://en.yts-official.com/api/v2"
+  ];
+  var DOMAINS_URL = "";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TIMEOUT = 12000;
   var MAX_STREAMS = 12;
 
-  var domainCache = { url: BASE, ts: 0 };
+  var apiCache = { list: null, ts: 0 };
+  var workingBase = "";
 
-  function fetchLatestDomain() {
+  function normalizeApiBase(value) {
+    var s = String(value || "").trim();
+    if (!s) return "";
+    s = s.replace(/\/list_movies\.json\/?$/, "").replace(/\/+$/, "");
+    if (/\/api\/v2$/.test(s)) return s;
+    if (/\/api$/.test(s)) return s + "/v2";
+    return s + "/api/v2";
+  }
+
+  function getApiBases() {
     var now = Date.now();
-    if (now - domainCache.ts < 36e5) {
-      return Promise.resolve(domainCache.url);
+    if (apiCache.list && now - apiCache.ts < 36e5) return Promise.resolve(apiCache.list.slice());
+
+    var bases = API_BASES.slice();
+    if (!DOMAINS_URL) {
+      apiCache.list = bases;
+      apiCache.ts = now;
+      return Promise.resolve(bases.slice());
     }
-    return fetch(DOMAINS_URL).then(function (response) {
-      return response.json();
-    }).then(function (data) {
-      if (data && data.yts) {
-        domainCache.url = data.yts;
-        domainCache.ts = now;
-      }
-      return domainCache.url;
-    }).catch(function (e) {
-      return domainCache.url;
-    });
+
+    return fetchTimeout(DOMAINS_URL, { headers: { "User-Agent": UA } }, 6000)
+      .then(function (r) {
+        if (!r.ok) throw new Error("domains HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var custom = data && (data.yts || (data.domains && data.domains.yts));
+        var added = [];
+        if (Array.isArray(custom)) {
+          custom.forEach(function (v) {
+            var b = normalizeApiBase(v);
+            if (b && added.indexOf(b) === -1) added.push(b);
+          });
+        } else {
+          var b = normalizeApiBase(custom);
+          if (b) added.push(b);
+        }
+        if (added.length) {
+          bases = added.concat(bases.filter(function (x) { return added.indexOf(x) === -1; }));
+        }
+        apiCache.list = bases;
+        apiCache.ts = now;
+        return bases.slice();
+      })
+      .catch(function () {
+        apiCache.list = bases;
+        apiCache.ts = now;
+        return bases.slice();
+      });
   }
 
   function fetchTimeout(url, options, timeout) {
@@ -73,7 +117,7 @@
     var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : (/hlg/.test(s) ? "HLG" : (/ sdr/.test(s) ? "SDR" : "")))));
     var audio = /truehd/.test(s) ? "TrueHD" : (/dts/.test(s) ? "DTS" : (/atmos/.test(s) ? "Atmos" : ""));
     var ach = /ddp.?5\.1|dd.?5\.1|ac.?3|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : (/aac/.test(s) ? "AAC" : ""));
-    var src = /remux/.test(s) ? "REMUX" : (/bluray|blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/webrip/.test(s) ? "WEBRip" : (/hdtv/.test(s) ? "HDTV" : (/dvdrip|dvd/.test(s) ? "DVD" : "")))));
+    var src = /remux/.test(s) ? "REMUX" : (/bluray|blu.?ray|brrip|bdrip/.test(s) ? "BluRay" : (/web.?dl|\bweb\b/.test(s) ? "WEB-DL" : (/webrip/.test(s) ? "WEBRip" : (/hdtv/.test(s) ? "HDTV" : (/dvdrip|dvd/.test(s) ? "DVD" : "")))));
     var lang = /dual/.test(s) ? "Dual Audio" : (/multi|hindi.*english|eng.*hin/.test(s) ? (/hindi/.test(s) ? "Multi (Hindi+Eng)" : "Multi Audio") : "");
     return { codec: codec, depth: depth, hdr: hdr, audio: (audio + (ach ? " " + ach : "")).trim(), src: src, lang: lang };
   }
@@ -96,6 +140,10 @@
     return (n < 10 ? "0" : "") + n;
   }
 
+  function normTitle(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
   function tmdbLookup(tmdbId, mediaType) {
     var type = mediaType === "tv" ? "tv" : "movie";
     var url = "https://api.themoviedb.org/3/" + type + "/" + encodeURIComponent(tmdbId) +
@@ -108,27 +156,107 @@
       .then(function (d) {
         return {
           title: d.name || d.title || d.original_name || d.original_title || "",
-          year: (d.first_air_date || d.release_date || "").substring(0, 4)
+          year: (d.first_air_date || d.release_date || "").substring(0, 4),
+          imdb: d.imdb_id || ""
         };
       });
   }
 
-  function torrentsApi(title, year, mediaType) {
-    var mode = mediaType === "tv" ? "tv" : "movie";
-    var path = mediaType === "tv" ? "/series/x" : "/movie/x";
-    var url = BASE + path + "?api=torrents&mode=" + mode +
-      "&name=" + encodeURIComponent(title) +
-      "&year=" + encodeURIComponent(year || "") +
-      "&quality=all";
-    return fetchTimeout(url, { headers: { "User-Agent": UA, "Accept": "application/json", "Referer": BASE + "/" } })
-      .then(function (r) {
-        if (!r.ok) throw new Error("API " + r.status);
-        return r.json();
-      })
-      .then(function (d) {
-        if (d && Array.isArray(d.hits)) return d.hits;
-        return [];
-      });
+  function fetchMovies(base, term) {
+    var url = base + "/list_movies.json?query_term=" + encodeURIComponent(term) + "&limit=50";
+    var origin = base.replace(/\/api\/v2\/?$/, "");
+    return fetchTimeout(url, {
+      headers: { "User-Agent": UA, "Accept": "application/json", "Referer": origin + "/" }
+    }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (d) {
+      if (!d || !d.data || !Array.isArray(d.data.movies)) throw new Error("bad api json");
+      return d.data.movies;
+    });
+  }
+
+  function pickMovie(movies, info) {
+    if (!movies || !movies.length) return null;
+    var title = normTitle(info.title);
+    var year = parseInt(info.year, 10);
+    var byImdb = null, byYear = null, byTitle = null;
+
+    movies.forEach(function (m) {
+      if (info.imdb && String(m.imdb_code || "").toLowerCase() === info.imdb.toLowerCase()) {
+        byImdb = byImdb || m;
+      }
+      var mt = normTitle(m.title || m.title_english);
+      var my = parseInt(m.year, 10);
+      var closeYear = !year || Math.abs(my - year) <= 1;
+      if (mt === title && closeYear) byYear = byYear || m;
+      else if (mt === title) byTitle = byTitle || m;
+      else if (title && mt.indexOf(title) === 0 && closeYear) byYear = byYear || m;
+    });
+
+    return byImdb || byYear || byTitle || null;
+  }
+
+  function torrentToHit(movie, t) {
+    var name = movie.title_long || ((movie.title || "YTS") + (movie.year ? " " + movie.year : ""));
+    var hash = String(t.hash || "").trim();
+    var magnet = "magnet:?xt=urn:btih:" + encodeURIComponent(hash) + "&dn=" + encodeURIComponent(name);
+    var synth = [
+      t.quality,
+      t.video_codec,
+      (String(t.bit_depth) === "10" ? "10bit" : ""),
+      t.audio_channels,
+      t.type,
+      name
+    ].filter(Boolean).join(" ");
+    return {
+      title: synth,
+      magnetUrl: magnet,
+      seeds: t.seeds,
+      peers: t.peers,
+      bytes: t.size_bytes,
+      source: t.type || "torrent",
+      quality: t.quality || "",
+      hash: hash
+    };
+  }
+
+  function torrentsApi(info, mediaType) {
+    var tag = "[YTS]";
+    if (mediaType === "tv") {
+      console.log(tag + " YTS v2 API sadece film destekliyor; TV atlanıyor");
+      return Promise.resolve([]);
+    }
+
+    return getApiBases().then(function (bases) {
+      if (workingBase) {
+        bases = [workingBase].concat(bases.filter(function (b) { return b !== workingBase; }));
+      }
+      var terms = [];
+      if (info.imdb) terms.push(info.imdb);
+      if (info.title) terms.push(info.title);
+      if (info.title && info.year) terms.push(info.title + " " + info.year);
+
+      function tryTerm(baseIndex, termIndex) {
+        if (baseIndex >= bases.length) return Promise.resolve([]);
+        if (termIndex >= terms.length) return tryTerm(baseIndex + 1, 0);
+        var base = bases[baseIndex];
+        var term = terms[termIndex];
+        return fetchMovies(base, term).then(function (movies) {
+          var movie = pickMovie(movies, info);
+          if (!movie) return tryTerm(baseIndex, termIndex + 1);
+          workingBase = base;
+          console.log(tag + " API: " + base + " term=" + term +
+            " -> " + movie.title + " (" + movie.year + ")");
+          return (movie.torrents || []).filter(function (t) { return t && t.hash; })
+            .map(function (t) { return torrentToHit(movie, t); });
+        }).catch(function () {
+          return tryTerm(baseIndex, termIndex + 1);
+        });
+      }
+
+      return tryTerm(0, 0);
+    });
   }
 
   function epMatch(title, season, episode) {
@@ -163,7 +291,7 @@
   function toStream(hit, display, quality) {
     var seeds = fmtSeeds(hit.seeds);
     var size = fmtBytes(hit.bytes);
-    var q = quality || parseQuality(hit.title);
+    var q = quality || hit.quality || parseQuality(hit.title);
     var r = parseRelease(hit.title);
     var line2 = [q, [r.codec, r.depth].filter(Boolean).join(" "), [r.hdr, r.audio].filter(Boolean).join(" "), r.src, r.lang].filter(Boolean).join(" | ");
     var text = display + "\n" + line2 + "\nSeeds " + seeds + " | " + size + " | " + (hit.source || "torrent");
@@ -188,6 +316,11 @@
     if (/480/.test(q)) return 1;
     return 0;
   }
+
+  function hitQuality(hit) {
+    return hit.quality || parseQuality(hit.title);
+  }
+
   function qSort(list) {
     var hd = list.filter(function (s) { return qRank(s.quality) >= 2.5; });
     var base = hd.length ? hd : list;
@@ -200,16 +333,14 @@
     console.log(tag + " Fetching " + mediaType + " " + tmdbId +
       (season ? " S" + season + (episode ? "E" + episode : "") : ""));
     var ctx = {};
-    return fetchLatestDomain().then(function (domain) {
-      BASE = domain;
-      console.log(tag + " Using domain: " + BASE);
-      return tmdbLookup(tmdbId, mediaType);
-    }).then(function (info) {
+    return tmdbLookup(tmdbId, mediaType).then(function (info) {
       if (!info.title) { console.log(tag + " TMDB lookup failed"); return []; }
       ctx.title = info.title;
       ctx.year = info.year;
-      console.log(tag + " TMDB: " + info.title + " (" + info.year + ")");
-      return torrentsApi(info.title, info.year, mediaType);
+      ctx.imdb = info.imdb;
+      console.log(tag + " TMDB: " + info.title + " (" + info.year + ")" +
+        (info.imdb ? " " + info.imdb : ""));
+      return torrentsApi(info, mediaType);
     }).then(function (hits) {
       if (!hits || !hits.length) { console.log(tag + " No torrents"); return []; }
       var list = hits.filter(function (h) { return h && h.magnetUrl && h.magnetUrl.indexOf("magnet:") === 0; });
@@ -219,10 +350,10 @@
         var eps = list.filter(function (h) { return epMatch(h.title, season || 1, episode || 1); });
         var picked = eps.length ? eps : list.filter(function (h) { return seasonMatch(h.title, season || 1); });
         picked.sort(function (a, b) {
-          var r = qRank(parseQuality(b.title)) - qRank(parseQuality(a.title));
+          var r = qRank(hitQuality(b)) - qRank(hitQuality(a));
           return r || ((b.seeds || 0) - (a.seeds || 0));
         });
-        var hd = picked.filter(function (h) { return qRank(parseQuality(h.title)) >= 2.5; });
+        var hd = picked.filter(function (h) { return qRank(hitQuality(h)) >= 2.5; });
         var streams = (hd.length ? hd : picked).slice(0, MAX_STREAMS).map(function (h) {
           return toStream(h, display + (eps.length ? "" : " Pack"));
         });
@@ -230,11 +361,11 @@
         return streams;
       }
       list.sort(function (a, b) {
-        var r = qRank(parseQuality(b.title)) - qRank(parseQuality(a.title));
+        var r = qRank(hitQuality(b)) - qRank(hitQuality(a));
         return r || ((b.seeds || 0) - (a.seeds || 0));
       });
-      var hd = list.filter(function (h) { return qRank(parseQuality(h.title)) >= 2.5; });
-      var out = (hd.length ? hd : list).slice(0, MAX_STREAMS).map(function (h) { return toStream(h, display); });
+      var hdMovies = list.filter(function (h) { return qRank(hitQuality(h)) >= 2.5; });
+      var out = (hdMovies.length ? hdMovies : list).slice(0, MAX_STREAMS).map(function (h) { return toStream(h, display); });
       console.log(tag + " Found " + out.length + " streams");
       return out;
     }).catch(function (err) {
