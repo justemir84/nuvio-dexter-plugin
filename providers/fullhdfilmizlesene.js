@@ -2,6 +2,7 @@
   "use strict";
 
   var BASE = "https://fullhdfilmizlesene.co";
+  var BASES = [BASE, "https://www.fullhdfilmizlesene.now"];
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
   var TIMEOUT = 20000;
@@ -113,6 +114,29 @@
 
   function rvali(s) { var o = ""; for (var i = s.length - 1; i >= 0; i--) o += s.charAt(i); return o; }
 
+  function normalizeUrl(u) {
+    u = String(u || "");
+    if (/^\/\//.test(u)) u = "https:" + u;
+    if (/^https?:\/\//i.test(u)) return u;
+    var base = String(BASE || "https://fullhdfilmizlesene.co").replace(/\/$/, "");
+    if (u.charAt(0) === "/") return base + u;
+    return base + "/" + u;
+  }
+
+  function isPlayableMediaUrl(u) {
+    u = String(u || "");
+    if (!/^https?:\/\//i.test(u)) return false;
+    if (/\/player\//i.test(u)) return false;
+    if (/\/embed\//i.test(u)) return false;
+    if (/\/iframe/i.test(u)) return false;
+    if (/[?&]vr_set=/.test(u)) return false;
+    if (/\.m3u8(\?|$)/i.test(u)) return true;
+    if (/\.mp4(\?|$)/i.test(u)) return true;
+    if (/\/playlist\//i.test(u)) return true;
+    if (/\/vod\//i.test(u)) return true;
+    return false;
+  }
+
   function resolveStream(pageUrl) {
     return fetchText(pageUrl, { "User-Agent": UA, Referer: BASE + "/" })
       .then(function (html) {
@@ -133,8 +157,15 @@
           if (!decoded) continue;
           var sm = decoded.match(/src="([^"]+)"/);
           if (sm && sm[1]) {
-            var src = sm[1].trim();
-            if (!seen[src]) { seen[src] = true; srcs.push(src); }
+            var src = normalizeUrl(sm[1].trim());
+            if (!seen[src] && isPlayableMediaUrl(src)) { seen[src] = true; srcs.push(src); }
+          }
+        }
+        if (!srcs.length) {
+          // Yeni site mimarisi iframe/embed döndürüyor; medya URL'si yoksa YouTube embed'i fallback olarak kullan
+          var yt = (html.match(/https:\/\/(?:www\.)?youtube\.com\/embed\/([A-Za-z0-9_\-]{6,})/i) || [])[1];
+          if (yt) {
+            srcs.push("https://www.youtube.com/embed/" + yt);
           }
         }
         if (!srcs.length) return null;
@@ -198,6 +229,8 @@
 
           var streams = urls.map(function (u, idx) {
             var isM3u8 = /\.m3u8(\?|$)/i.test(u);
+            var isYt = /youtube\.com\/(embed|watch|shorts)/i.test(u);
+            if (isYt) { isM3u8 = true; }
             return {
               name: "FullHDFilmizlesene",
               title: info.title + (info.year ? " (" + info.year + ")" : ""),
