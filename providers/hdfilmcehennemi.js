@@ -35,7 +35,7 @@
   ];
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_API_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
-  var TIMEOUT = 15000;
+  var TIMEOUT = 12000;
   var TAG = "[hdfilmcehennemi]";
 
   var TR_MAP = {
@@ -160,8 +160,25 @@
     });
   }
 
-  function fetchText(url, headers, timeout) {
-    return fetchRaw(url, { headers: headers || { "User-Agent": UA } }, timeout)
+  function wait(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  // Ag/TMDB zaman asimlari gecicidir; bir kez tekrar dener (HTTP hatalarinda tekrar yok).
+  function fetchRawRetry(url, opts, timeout, retries) {
+    var attempts = retries || 0;
+    function run(n) {
+      return fetchRaw(url, opts, timeout).catch(function (err) {
+        if (n < attempts) return wait(400 * (n + 1)).then(function () { return run(n + 1); });
+        throw err;
+      });
+    }
+    return run(0);
+  }
+
+  function fetchText(url, headers, timeout, retries) {
+    var attempt = retries === undefined ? 1 : retries;
+    return fetchRawRetry(url, { headers: headers || { "User-Agent": UA } }, timeout, attempt)
       .then(function (res) {
         if (!res || !res.ok) return null;
         return res.text();
@@ -431,7 +448,7 @@
         part_key: ""
       });
 
-      return fetchRaw(ajaxurl, {
+      return fetchRawRetry(ajaxurl, {
         method: "POST",
         headers: {
           "User-Agent": UA,
@@ -441,7 +458,7 @@
           "X-Requested-With": "XMLHttpRequest"
         },
         body: body
-      }).then(function (res) {
+      }, TIMEOUT, 1).then(function (res) {
         if (!res || !res.ok) return null;
         return res.text();
       }).catch(function () { return null; }).then(function (txt) {
