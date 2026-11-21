@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.49",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FullHDFilmizlesene, DiziFilm, DiziMom, Diziyou, NetMirror, justanime, Animexe, Anizium, Vidly, Play4u, AniHub ve FilmEkseni sağlayıcıları",
+  "version": "2.3.74",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -74,7 +74,7 @@
     {
       "id": "mapple",
       "name": "Mapple",
-      "version": "1.1.0",
+      "version": "1.1.2",
       "description": "Çok sunuculu HLS; PoW oturum doğrulama; mobil UA ile Cloudflare uyumlu",
       "filename": "providers/mapple.js",
       "supportedTypes": [
@@ -89,6 +89,18 @@
       "contentLanguage": [
         "en"
       ]
+    },
+    {
+      "id": "mapple2",
+      "name": "Mapple 2",
+      "version": "1.0.1",
+      "description": "Mapple ikinci kaynak havuzu (Hera, Apollo, Hermes vb.)",
+      "filename": "providers/mapple2.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["m3u8"],
+      "contentLanguage": ["en"]
     },
     {
       "id": "atlantic",
@@ -302,8 +314,7 @@
     {
       "id": "4khdhub",
       "name": "4KHDHub",
-      "version": "1.0.5",
-      "description": "4K/UHD film ve dizi stream'leri",
+      "version": "1.0.6",
       "filename": "providers/4khdhub.js",
       "supportedTypes": [
         "movie",
@@ -323,8 +334,8 @@
     {
       "id": "4khdclub",
       "name": "4KHD Club",
-      "version": "1.2.0",
-      "description": "4K-HD.Club arşivi; TakeFile indirme sayfaları doğrudan oynatılabilir dosya URL'ine çevrilir (MKV), TV'de klasörden bölüm seçilir. MoonDL captcha nedeniyle elenir. Film + dizi.",
+      "version": "1.2.1",
+      "description": "4K-HD.Club arşivi; film + dizi; TakeFile direkt MKV/MP4/M4V/WebM/AVI/TS, kalite ve video/ses/HDR/altyazı bilgileri.",
       "filename": "providers/4khdclub.js",
       "supportedTypes": [
         "movie",
@@ -333,7 +344,12 @@
       "enabled": true,
       "hasSettings": false,
       "formats": [
-        "mkv"
+        "mkv",
+        "mp4",
+        "m4v",
+        "webm",
+        "avi",
+        "ts"
       ],
       "contentLanguage": [
         "en"
@@ -404,8 +420,8 @@
     {
       "id": "hdfilmcehennemi",
       "name": "HDFilmCehennemi",
-      "version": "2.0.0",
-      "description": "HDFilmCehennemi.land; film ve dizi, HLS, çok dilli VTT altyazı",
+      "version": "1.0.3",
+      "description": "HDFilmCehennemi.land; film ve dizi, HLS (Close source), çok dilli VTT altyazı",
       "filename": "providers/hdfilmcehennemi.js",
       "supportedTypes": [
         "movie",
@@ -422,11 +438,11 @@
       ]
     },
     {
-      "id": "dizibal",
-      "name": "DiziBal",
-      "description": "dizibal.org - film ve diziler icin HLS kaynaklari (Turkce dublaj/altyazi)",
-      "version": "1.0.1",
-      "filename": "providers/dizibal.js",
+      "id": "hdfilmcehennemiland",
+      "name": "Land",
+      "version": "1.0.3",
+      "description": "HDFilmCehennemi.land - film ve dizi; HLS, Türkçe dublaj/altyazı",
+      "filename": "providers/land.js",
       "supportedTypes": [
         "movie",
         "tv"
@@ -439,7 +455,33 @@
       "contentLanguage": [
         "tr"
       ],
+      "logo": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.land&sz=128"
+    },
+    {
+      "id": "dizibal",
+      "name": "DiziBal",
+      "description": "dizibal.org - film ve diziler icin HLS kaynaklari (Turkce dublaj/altyazi)",
+      "version": "1.0.1",
+      "filename": "providers/dizibal.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["m3u8"],
+      "contentLanguage": ["tr"],
       "logo": "https://www.google.com/s2/favicons?domain=dizibal.org&sz=128"
+    },
+    {
+      "id": "filmekseni",
+      "name": "FilmEkseni",
+      "version": "1.0.1",
+      "description": "FilmEkseni.vip - film ve dizi; 1080p HLS, Turkce dublaj ve altyazi",
+      "filename": "providers/filmekseni.js",
+      "supportedTypes": ["movie", "tv"],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": ["m3u8"],
+      "contentLanguage": ["tr"],
+      "logo": "https://www.google.com/s2/favicons?domain=filmekseni.vip&sz=128"
     },
     {
       "id": "fullhdfilmizlesene",
@@ -464,7 +506,7 @@
     {
       "id": "dizifilm",
       "name": "DiziFilm",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Dizifilm.life; film ve dizi, Vidmixi HLS, Türkçe dublaj/altyazı",
       "filename": "providers/dizifilm.js",
       "supportedTypes": [
@@ -507,7 +549,7 @@
       "id": "justflix",
       "name": "JustFlix",
       "description": "JustFlix - TR dublaj ve orijinal ses, TR/EN altyazılı dizi kaynakları",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "filename": "providers/justflix.js",
       "supportedTypes": [
         "tv"
@@ -533,7 +575,7 @@
         "movie",
         "tv"
       ],
-      "enabled": true,
+      "enabled": false,
       "hasSettings": false,
       "formats": [
         "m3u8"
@@ -543,6 +585,26 @@
         "tr"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=netmirror.one&sz=128"
+    },
+    {
+      "id": "anihub",
+      "name": "AniHub",
+      "version": "1.0.0",
+      "description": "AniHub.com.tr - anime bölümleri ve anime filmleri; 4K'ya kadar HLS (token), Türkçe altyazı",
+      "filename": "providers/anihub.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "enabled": true,
+      "hasSettings": false,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "tr"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=anihub.com.tr&sz=128"
     },
     {
       "id": "justanime",
@@ -645,66 +707,7 @@
         "hi"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=play4u.org&sz=128"
-    },
-    {
-      "id": "anihub",
-      "name": "AniHub",
-      "version": "1.0.0",
-      "description": "AniHub.com.tr - anime bölümleri ve anime filmleri; 4K'ya kadar HLS (token), Türkçe altyazı",
-      "filename": "providers/anihub.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=anihub.com.tr&sz=128"
-    },
-    {
-      "id": "hdfilmcehennemiland",
-      "name": "Land",
-      "version": "1.0.0",
-      "description": "HDFilmCehennemi.land - film ve dizi; HLS, Türkçe dublaj/altyazı",
-      "filename": "providers/land.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.land&sz=128"
-    },
-    {
-      "id": "filmekseni",
-      "name": "FilmEkseni",
-      "version": "1.0.0",
-      "description": "FilmEkseni.vip - film ve dizi; 1080p HLS, Turkce dublaj ve altyazi",
-      "filename": "providers/filmekseni.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=filmekseni.vip&sz=128"
     }
+
   ]
 }
