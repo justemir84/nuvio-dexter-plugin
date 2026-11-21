@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.73",
+  "version": "2.3.74",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -473,7 +473,7 @@
     {
       "id": "filmekseni",
       "name": "FilmEkseni",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "FilmEkseni.vip - film ve dizi; 1080p HLS, Turkce dublaj ve altyazi",
       "filename": "providers/filmekseni.js",
       "supportedTypes": ["movie", "tv"],
@@ -548,8 +548,8 @@
     {
       "id": "justflix",
       "name": "JustFlix",
-      "description": "JustFlix - TR Dublaj + TR/EN altyazılı bölüm kaynakları, Türkçe dublaj destekler",
-      "version": "1.0.4",
+      "description": "JustFlix - TR dublaj ve orijinal ses, TR/EN altyazılı dizi kaynakları",
+      "version": "1.2.0",
       "filename": "providers/justflix.js",
       "supportedTypes": [
         "tv"

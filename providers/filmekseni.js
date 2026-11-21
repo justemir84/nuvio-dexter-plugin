@@ -268,12 +268,57 @@
     }
   }
 
-  function decodeTemplate(template) {
-    try {
-      return Buffer.from(template, "base64").toString("utf8");
-    } catch (e) {
-      return "";
+  function atobSafe(input) {
+    var src = String(input || "").replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+    while (src.length % 4) src += "=";
+    if (typeof atob === "function") {
+      try { return atob(src); } catch (e) {}
     }
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var out = "", acc = 0, bits = 0, i, value, ch;
+    for (i = 0; i < src.length; i++) {
+      ch = src.charAt(i);
+      if (ch === "=") break;
+      value = chars.indexOf(ch);
+      if (value < 0) continue;
+      acc = ((acc << 6) | value) & 0xFFFFFF;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        out += String.fromCharCode((acc >> bits) & 255);
+        acc &= bits ? (1 << bits) - 1 : 0;
+      }
+    }
+    return out;
+  }
+
+  function base64Decode(input) {
+    return atobSafe(input);
+  }
+
+  function utf8Decode(bin) {
+    bin = String(bin || "");
+    try { return decodeURIComponent(escape(bin)); } catch (e) {}
+    var out = "", i = 0;
+    while (i < bin.length) {
+      var b = bin.charCodeAt(i++);
+      if (b < 0x80) out += String.fromCharCode(b);
+      else if (b < 0xE0) {
+        out += String.fromCharCode(((b & 0x1F) << 6) | (bin.charCodeAt(i++) & 0x3F));
+      } else if (b < 0xF0) {
+        out += String.fromCharCode(((b & 0x0F) << 12) | ((bin.charCodeAt(i++) & 0x3F) << 6) | (bin.charCodeAt(i++) & 0x3F));
+      } else {
+        var cp = ((b & 0x07) << 18) | ((bin.charCodeAt(i++) & 0x3F) << 12)
+          | ((bin.charCodeAt(i++) & 0x3F) << 6) | (bin.charCodeAt(i++) & 0x3F);
+        cp -= 0x10000;
+        out += String.fromCharCode(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
+      }
+    }
+    return out;
+  }
+
+  function decodeTemplate(template) {
+    try { return utf8Decode(base64Decode(template)); } catch (e) { return ""; }
   }
 
   function getEmbedUrl(playerData) {
@@ -381,7 +426,11 @@
 
         console.log(tag + " Bulundu: " + result.title + " (" + result.slug + ")");
 
-        return getMoviePage(result.slug).then(function (html) {
+        var pageSlug = result.slug;
+        if (isTv) {
+          pageSlug = "dizi/" + result.slug + "/sezon-" + s + "/bolum-" + e;
+        }
+        return getMoviePage(pageSlug).then(function (html) {
           if (!html) {
             console.log(tag + " Sayfa alinamadi");
             return [];
