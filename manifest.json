@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.75",
+  "version": "2.3.76",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -96,11 +96,18 @@
       "version": "1.0.1",
       "description": "Mapple ikinci kaynak havuzu (Hera, Apollo, Hermes vb.)",
       "filename": "providers/mapple2.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false,
-      "formats": ["m3u8"],
-      "contentLanguage": ["en"]
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "atlantic",
@@ -463,11 +470,18 @@
       "description": "dizibal.org - film ve diziler icin HLS kaynaklari (Turkce dublaj/altyazi)",
       "version": "1.0.1",
       "filename": "providers/dizibal.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false,
-      "formats": ["m3u8"],
-      "contentLanguage": ["tr"],
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "tr"
+      ],
       "logo": "https://www.google.com/s2/favicons?domain=dizibal.org&sz=128"
     },
     {
@@ -476,11 +490,18 @@
       "version": "1.0.1",
       "description": "FilmEkseni.vip - film ve dizi; 1080p HLS, Turkce dublaj ve altyazi",
       "filename": "providers/filmekseni.js",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "enabled": true,
       "hasSettings": false,
-      "formats": ["m3u8"],
-      "contentLanguage": ["tr"],
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "tr"
+      ],
       "logo": "https://www.google.com/s2/favicons?domain=filmekseni.vip&sz=128"
     },
     {
@@ -676,7 +697,7 @@
         "movie",
         "tv"
       ],
-      "enabled": true,
+      "enabled": false,
       "hasSettings": false,
       "formats": [
         "mp4"
@@ -708,6 +729,5 @@
       ],
       "logo": "https://www.google.com/s2/favicons?domain=play4u.org&sz=128"
     }
-
   ]
 }
