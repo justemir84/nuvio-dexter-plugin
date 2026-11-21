@@ -61,17 +61,22 @@
     if (!h["Accept-Language"]) h["Accept-Language"] = "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7";
 
     var timer = null;
-    var timeout = new Promise(function (_, reject) {
-      timer = setTimeout(function () { reject(new Error("timeout")); }, TIMEOUT);
-    });
-    return Promise.race([fetch(url, { headers: h }), timeout])
+    var work = fetch(url, { headers: h });
+    // Bazi QuickJS/Hermes ortamlarinda setTimeout bulunmayabilir.
+    if (typeof setTimeout === "function") {
+      var timeout = new Promise(function (_, reject) {
+        timer = setTimeout(function () { reject(new Error("timeout")); }, TIMEOUT);
+      });
+      work = Promise.race([work, timeout]);
+    }
+    return work
       .then(function (res) {
-        if (timer) clearTimeout(timer);
+        if (timer && typeof clearTimeout === "function") clearTimeout(timer);
         if (!res || !res.ok) return null;
         return res.text();
       })
       .catch(function () {
-        if (timer) clearTimeout(timer);
+        if (timer && typeof clearTimeout === "function") clearTimeout(timer);
         return null;
       });
   }
@@ -80,6 +85,17 @@
     return fetchText(url, { "User-Agent": UA, Accept: "application/json" }).then(function (txt) {
       if (!txt) return null;
       try { return JSON.parse(txt); } catch (e) { return null; }
+    });
+  }
+
+  // TMDB ara sira 429/ag hatasi dondurur; tek seferlik kisa bir yeniden deneme
+  // kaynak listesinin bos donmesini engeller.
+  function fetchJsonRetry(url) {
+    return fetchJson(url).then(function (data) {
+      if (data || typeof setTimeout !== "function") return data;
+      return new Promise(function (resolve) {
+        setTimeout(function () { resolve(fetchJson(url)); }, 400);
+      });
     });
   }
 
@@ -162,6 +178,10 @@
     return out.replace(/\s+/g, " ").trim();
   }
 
+  function containsWords(haystack, needle) {
+    return (" " + haystack + " ").indexOf(" " + needle + " ") !== -1;
+  }
+
   function titleScore(pageTitle, titles) {
     var p = norm(pageTitle);
     if (!p) return 0;
@@ -172,7 +192,7 @@
       var s = 0;
       if (p === t) s = 100;
       else if (p.indexOf(t + " ") === 0 || t.indexOf(p + " ") === 0) s = 80;
-      else if (p.indexOf(t) !== -1 || t.indexOf(p) !== -1) s = 60;
+      else if (containsWords(p, t) || containsWords(t, p)) s = 60;
       if (s > best) best = s;
     }
     return best;
@@ -216,8 +236,8 @@
     var base = "https://api.themoviedb.org/3/tv/" + encodeURIComponent(tmdbId);
     var q = "?api_key=" + encodeURIComponent(apiKey) + "&append_to_response=alternative_titles";
     return Promise.all([
-      fetchJson(base + q + "&language=tr-TR"),
-      fetchJson(base + q + "&language=en-US")
+      fetchJsonRetry(base + q + "&language=tr-TR"),
+      fetchJsonRetry(base + q + "&language=en-US")
     ]).then(function (arr) {
       var tr = arr[0], en = arr[1];
       var d = tr || en;
@@ -322,6 +342,9 @@
     var ys = yearScore(pi.year, info.year);
     if (ys < 0) return null;
     if (ts < 60) return null;
+    // Gevsek baslik eslesmesinde (alt dizgi) yil birebir olmali; aksi halde
+    // "You" -> "Young Sheldon" gibi yanlis diziler secilebilir.
+    if (ts <= 60 && pi.year && info.year && pi.year !== info.year) return null;
     var result = {
       score: ts + ys + (priority || 0),
       title: pi.title || page.slug,
@@ -481,9 +504,7 @@
 
   function verifyEpisode(html, info, season, episode) {
     var re = /<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi, m;
-    var foundLd = false;
     while ((m = re.exec(String(html || ""))) !== null) {
-      foundLd = true;
       var data;
       try { data = JSON.parse(m[1]); } catch (e) { continue; }
       var objs = [];
@@ -505,8 +526,6 @@
         return true;
       }
     }
-    if (foundLd) return false;
-
     var h1 = (String(html || "").match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || "";
     var h1Text = decodeEntities(cleanText(h1));
     if (titleScore(h1Text, info.titles) < 60) return false;
@@ -533,7 +552,7 @@
   // ---------------------------------------------------------------- player
 
   function findPlayerIframe(html) {
-    var re = /<iframe\b[^>]*\bsrc\s*=\s*"([^"]+)"/gi, m;
+    var re = /<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi, m;
     while ((m = re.exec(String(html || ""))) !== null) {
       var u = decodeEntities(m[1]);
       if (u.indexOf("/player/") !== -1) return absoluteUrl(u);
@@ -716,7 +735,8 @@
             provider: "justflix",
             headers: { "User-Agent": UA, Referer: playerUrl },
             subtitles: parsed.subtitles,
-            _priority: variant.priority
+            _priority: variant.priority,
+            _dub: variant.dub ? true : false
           };
         });
       });
@@ -783,11 +803,13 @@
           var display = target.title + (target.year ? " (" + target.year + ")" : "") + " S" + s + "E" + e;
           var origLang = info.originalLanguage || "en";
 
-          var variants = [
-            { suffix: "_tr", label: "TR Dublaj", lang: "tr", priority: 1, dub: true },
-            { suffix: "", label: "Orijinal Ses (" + langName(origLang) + ")", lang: origLang, priority: 2 },
-            { suffix: "_enSub", label: "Orijinal Ses (EN Altyazılı)", lang: origLang, priority: 3 }
-          ];
+          var variants = [];
+          // Orijinal dil Turkce ise dublaj aranmaz; site zaten tek ses dondurur.
+          if (origLang !== "tr") {
+            variants.push({ suffix: "_tr", label: "TR Dublaj", lang: "tr", priority: 1, dub: true });
+          }
+          variants.push({ suffix: "", label: "Orijinal Ses (" + langName(origLang) + ")", lang: origLang, priority: 2 });
+          variants.push({ suffix: "_enSub", label: "Orijinal Ses (EN Altyazılı)", lang: origLang, priority: 3 });
 
           var jobs = variants.map(function (v) {
             return resolveVariant(playerBase + v.suffix + ".html", ep.url, v, info, display, tag);
@@ -799,14 +821,23 @@
               var r = results[i];
               if (!r) continue;
               if (byUrl[r.url]) {
-                mergeSubtitles(byUrl[r.url], r);
+                var prev = byUrl[r.url];
+                // Ayni kaynak hem dublaj hem orijinal olarak donduyse orijinali koru.
+                if (prev._dub && !r._dub) {
+                  var at = out.indexOf(prev);
+                  if (at !== -1) out[at] = r;
+                  byUrl[r.url] = r;
+                  mergeSubtitles(r, prev);
+                } else {
+                  mergeSubtitles(prev, r);
+                }
                 continue;
               }
               byUrl[r.url] = r;
               out.push(r);
             }
             out.sort(function (a, b) { return (a._priority || 0) - (b._priority || 0); });
-            for (var j = 0; j < out.length; j++) delete out[j]._priority;
+            for (var j = 0; j < out.length; j++) { delete out[j]._priority; delete out[j]._dub; }
             console.log(tag + " Kaynak: " + out.length +
               (out.length ? " (" + out.map(function (x) { return x.name; }).join(", ") + ")" : ""));
             return out;
