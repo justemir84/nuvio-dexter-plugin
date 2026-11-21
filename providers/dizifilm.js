@@ -5,14 +5,14 @@
  *   TMDB id -> TMDB basligi (tr) + alternatif basliklar + yil
  *   -> Dizifilm /api/search?q=  (film ve dizi sonuclari)
  *   -> /dizi/{slug}/sezon-{s}/bolum-{e}  (bolum sayfasi, server-rendered JSON icinde embed_player_url_1)
- *   -> vidmixi.com/embed/{id}  (JW Player sifreli yapilandirmesi)
+ *   -> vidmixi.com/embed/{id} veya dosyaload.com/embed/{id}  (JW Player sifreli yapilandirmesi)
  *   -> AES-256-CBC + EVP_BytesToKey (MD5) ile video_location cozulur (master.m3u8)
  *   -> video_location  (master HLS playlist, calisir)
  *
  * Notlar:
  * - Arama API'si /api/search?q= (JSON dondurur)
  * - Bolum sayfasi server-side render edilir; embed_player_url_1 HTML'de yer alir
- * - Vidmixi embed sayfasindaki bePlayer() cagrisindaki sifreli JSON cozulur
+ * - Vidmixi/dosyaload embed sayfalarindaki bePlayer() cagrisindaki sifreli JSON cozulur
  *   (AES-256-CBC, sifre = video ID, salt/iv = JSON'daki s ve iv alanlari)
  * - Cozulmus video_location bir master.m3u8 URL'sidir
  * - Altyazilar: cozulmus yapilandirmadaki strSubtitles dizisinden alinir
@@ -125,19 +125,33 @@
   }
 
   function fetchText(url, headers) {
-    var opts = { headers: headers || { "User-Agent": UA } };
+    var h = {};
+    var k;
+    if (headers) {
+      for (k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k)) h[k] = headers[k];
+      }
+    }
+    if (!h["User-Agent"]) h["User-Agent"] = UA;
+    if (!h["Accept"]) h["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+
     var timer = null;
-    var timeout = new Promise(function (_, reject) {
-      timer = setTimeout(function () { reject(new Error("timeout")); }, TIMEOUT);
-    });
-    return Promise.race([fetch(url, opts), timeout])
+    var work = fetch(url, { headers: h });
+    // Bazi QuickJS/Hermes ortamlarinda setTimeout bulunmayabilir.
+    if (typeof setTimeout === "function") {
+      var timeout = new Promise(function (_, reject) {
+        timer = setTimeout(function () { reject(new Error("timeout")); }, TIMEOUT);
+      });
+      work = Promise.race([work, timeout]);
+    }
+    return work
       .then(function (res) {
-        if (timer) clearTimeout(timer);
+        if (timer && typeof clearTimeout === "function") clearTimeout(timer);
         if (!res || !res.ok) return null;
         return res.text();
       })
       .catch(function () {
-        if (timer) clearTimeout(timer);
+        if (timer && typeof clearTimeout === "function") clearTimeout(timer);
         return null;
       });
   }
@@ -149,6 +163,42 @@
     });
   }
 
+  function embedOrigin(url) {
+    var m = String(url || "").match(/^(https?:\/\/[^\/]+)/i);
+    return m ? m[1] : "";
+  }
+
+  function extractEmbedUrl(html) {
+    var text = String(html || "");
+    var re = /https?:\/\/(?:www\.)?(?:vidmixi|dosyaload)\.com\/embed\/[a-z0-9]+/i;
+    var idx = text.indexOf("embed_player_url_1");
+    if (idx >= 0) {
+      var near = re.exec(text.substring(idx, idx + 700));
+      if (near) return near[0];
+    }
+    // embed_player_url_2/3 veya "parts" icindeki ilk gecerli embed
+    var any = re.exec(text);
+    return any ? any[0] : null;
+  }
+
+  function fetchEmbedPage(url) {
+    var origin = embedOrigin(url);
+    var refs = [EMBED_REFERER];
+    if (origin && refs.indexOf(origin + "/") === -1) refs.push(origin + "/");
+
+    function attempt(i) {
+      if (i >= refs.length) return Promise.resolve(null);
+      return fetchText(url, {
+        "User-Agent": UA,
+        "Referer": refs[i],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      }).then(function (html) {
+        return html || attempt(i + 1);
+      });
+    }
+    return attempt(0);
+  }
+
   function decodeEntities(text) {
     var s = String(text || "");
     s = s.replace(/&#x([0-9a-f]+);/gi, function (_, hex) { return String.fromCharCode(parseInt(hex, 16)); });
@@ -157,7 +207,8 @@
   }
 
   function norm(text) {
-    var s = String(text || "").toLowerCase();
+    // TMDB bazen basliga gorunmez yon/isaret karakterleri ekliyor (orn. "Ofis").
+    var s = String(text || "").replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").toLowerCase();
     try {
       if (typeof s.normalize === "function") s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     } catch (e) {}
@@ -371,25 +422,18 @@
       .then(function (html) {
         if (!html) { console.log("[dizifilm] HTML null"); return null; }
         console.log("[dizifilm] HTML len:", html.length, "idxOf:", html.indexOf("embed_player_url_1"));
-        var embedUrl = null;
-        var idx = html.indexOf("embed_player_url_1");
-        if (idx >= 0) {
-          var context = html.substring(idx, idx + 500);
-          var m = context.match(/["']([^"']*vidmixi\.com\/embed\/[a-z0-9]+)["']/);
-          if (m) embedUrl = m[1];
-        }
-        if (!embedUrl) {
-          var m2 = html.match(/https:\/\/vidmixi\.com\/embed\/[a-z0-9]+/);
-          if (m2) embedUrl = m2[0];
-        }
+        var embedUrl = extractEmbedUrl(html);
         if (!embedUrl) { console.log("[dizifilm] embedUrl null"); return null; }
         var idMatch = embedUrl.match(/\/embed\/([a-z0-9]+)/i);
         return { embedUrl: embedUrl, embedId: idMatch ? idMatch[1] : "" };
       });
   }
 
-  function resolveVidmixi(embedUrl, embedId) {
-    return fetchText(embedUrl, { "User-Agent": UA, Referer: EMBED_REFERER })
+  function resolveEmbed(embedUrl, embedId) {
+    var origin = embedOrigin(embedUrl);
+    var subtitleBase = origin || "https://vidmixi.com";
+    var playerReferer = embedUrl || (origin ? origin + "/" : EMBED_REFERER);
+    return fetchEmbedPage(embedUrl)
       .then(function (html) {
         if (!html) { console.log("[dizifilm] embed page null"); return null; }
         console.log("[dizifilm] embed page len:", html.length);
@@ -440,7 +484,13 @@
             var sub = setparams.strSubtitles[i];
             if (!sub || !sub.file) continue;
             var subUrl = sub.file;
-            if (subUrl.indexOf("/") === 0) subUrl = "https://vidmixi.com" + subUrl;
+            if (/^https?:\/\//i.test(subUrl)) {
+              // mutlak URL, bir sey yapma
+            } else if (subUrl.indexOf("/") === 0) {
+              subUrl = subtitleBase + subUrl;
+            } else {
+              subUrl = subtitleBase + "/" + subUrl;
+            }
             var lang = sub.language || "und";
             if (lang === "tur" || lang === "tr") lang = "tr";
             else if (lang === "eng" || lang === "en") lang = "en";
@@ -449,12 +499,12 @@
               language: lang,
               name: sub.label || lang,
               lang: lang,
-              headers: { "User-Agent": UA, "Referer": EMBED_REFERER }
+              headers: { "User-Agent": UA, "Referer": playerReferer }
             });
           }
         }
 
-        return { url: setparams.video_location, subtitles: subtitles };
+        return { url: setparams.video_location, subtitles: subtitles, referer: playerReferer };
       });
   }
 
@@ -499,28 +549,29 @@
 
           console.log(tag + " Embed URL: " + epData.embedUrl);
 
-          return resolveVidmixi(epData.embedUrl, epData.embedId).then(function (stream) {
-            if (!stream) {
+          return resolveEmbed(epData.embedUrl, epData.embedId).then(function (resolved) {
+            if (!resolved) {
               console.log(tag + " Video cozulumedi");
               return [];
             }
 
-            var display = info.title + (info.year ? " (" + info.year + ")" : "");
+            var cleanTitle = String(info.title || "").replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").trim();
+            var display = cleanTitle + (info.year ? " (" + info.year + ")" : "");
             if (isTv) display += " S" + s + "E" + e;
 
-            var headers = { "User-Agent": UA, "Referer": epData.embedUrl };
+            var headers = { "User-Agent": UA, "Referer": resolved.referer || epData.embedUrl };
 
             var stream = {
               name: "Dizifilm",
               title: display,
-              url: stream.url,
+              url: resolved.url,
               quality: "Auto",
               isM3u8: true,
               type: "hls",
               language: "tr",
               provider: "dizifilm",
               headers: headers,
-              subtitles: stream.subtitles || [],
+              subtitles: resolved.subtitles || [],
               behaviorHints: { bingeGroup: "dizifilm-" + result.slug }
             };
 
