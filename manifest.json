@@ -420,7 +420,7 @@
     {
       "id": "hdfilmcehennemi",
       "name": "HDFilmCehennemi",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "description": "HDFilmCehennemi.land; film ve dizi, HLS (Close source), çok dilli VTT altyazı",
       "filename": "providers/hdfilmcehennemi.js",
       "supportedTypes": [

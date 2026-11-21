@@ -16,8 +16,8 @@
 (function () {
   "use strict";
 
-  var BASE = "https://www.hdfilmcehennemi.land";
-  var EMBED_BASE = "https://fastplay.mom";
+  var BASE = "https://www.hdfilmcehennemi.nl";
+  var BASES = [BASE, "https://www.hdfilmcehennemi.land"];
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_API_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
   var TIMEOUT = 20000;
@@ -124,7 +124,7 @@
     return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" })
       .then(function (html) {
         if (!html) return [];
-        var links = [...new Set((html.match(/https:\/\/www\.hdfilmcehennemi\.land\/(?:film|dizi)\/[^"']+/gi) || []))];
+        var links = [...new Set((html.match(/https:\/\/www\.hdfilmcehennemi\.(?:nl|land)\/(?:film|dizi)\/[^"']+/gi) || []))];
         var out = [];
         var seen = {};
         links.forEach(function (l) {
@@ -275,7 +275,7 @@
                   console.log(tag + " Failed to fetch series page");
                   return [];
                 }
-                var epLinks = [...new Set((html.match(/https:\/\/www\.hdfilmcehennemi\.land\/bolum\/[^"']+/gi) || []))];
+                var epLinks = [...new Set((html.match(/https:\/\/www\.hdfilmcehennemi\.(?:nl|land)\/bolum\/[^"']+/gi) || []))];
                 var epUrl = null;
                 for (var i = 0; i < epLinks.length; i++) {
                   var m = epLinks[i].match(/(\d+)-sezon-(\d+)/i);
