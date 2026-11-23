@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.87",
+  "version": "2.3.88",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium, Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -611,7 +611,7 @@
     {
       "id": "play4u",
       "name": "Play4u",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "description": "Play4u.org - film ve dizi; 1080p+ HLS, çoklu ses (Hindi/English), IMDb ID ile",
       "filename": "providers/play4u.js",
       "supportedTypes": [
