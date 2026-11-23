@@ -16,9 +16,11 @@
  *   hardcoded value is only a fallback. A wrong key produces a garbled
  *   "URL" and Nuvio then fails with "url using bad/illegal format".
  * - Unsealed URL requires Referer: https://play4u.org/
- * - The CDN serves the HLS master as a .png file with image/png content
- *   type. "?type=m3u8" is appended (the CDN ignores it) so players that
- *   look at the URL instead of the payload treat it as HLS.
+ * - The CDN disguises the HLS master as .png/.css/... with a matching
+ *   Content-Type. ffmpeg/mpv/VLC therefore refuse to auto-detect HLS
+ *   ("Not detecting m3u8/hls with non standard extension and non standard
+ *   mime type"). "?type=.m3u8" is appended: the CDN ignores the query,
+ *   Nuvio/Media3 reads type=m3u8, and ffmpeg sees a URL ending in .m3u8.
  * - Only 1080p+ content is returned (720p and below filtered out).
  * - Hermes uyumlu: async/await yok, yalnizca Promise zinciri.
  */
@@ -145,8 +147,10 @@
     return !/[\x00-\x20\x7f-\uffff]/.test(u);
   }
 
+  // Nokta onemli: ffmpeg/mpv/VLC uzantiyi URL'nin sonundan okur; "m3u8"
+  // yetmiyor, ".m3u8" ile bitmesi gerekiyor. CDN query'yi yoksayiyor.
   function asHlsUrl(u) {
-    return validStreamUrl(u) ? (u + (u.indexOf("?") < 0 ? "?type=m3u8" : "&type=m3u8")) : null;
+    return validStreamUrl(u) ? (u + (u.indexOf("?") < 0 ? "?type=.m3u8" : "&type=.m3u8")) : null;
   }
 
   // -------------------------------------------------------------- TMDB
