@@ -1,31 +1,33 @@
 /**
- * filmekseni - FilmEkseni (filmekseni.vip) provider for Nuvio
+ * filmekseni - FilmEkseni (filmekseni.pro) provider for Nuvio
  *
- * Flow:
+ * Akis:
  *   TMDB id -> TMDB basligi (tr) + alternatif basliklar + yil
- *   -> Filmekseni /api/search?q=  (movie results: id, title, slug, releaseYear)
- *   -> /{slug}/ movie page
- *   -> data-video-player x-data JSON (dual[] with link + base64 template)
+ *   -> filmekseni /api/search?q=  (data[]: title, slug, contentableType, releaseYear)
+ *   -> /<slug>/ film sayfasi
+ *   -> data-video-player x-data JSON (dual[]: link + base64 template)
  *   -> template decode: <iframe data-src="//eksenload.top/eplayer/{link}">
- *   -> /eplayer/{link} embed page -> JW Player config JSON
- *   -> file (m3u8) + tracks (VTT subtitles)
+ *   -> /eplayer/{link} -> JW Player config JSON
+ *   -> file (m3u8) + tracks (VTT altyazi)
  *
  * Notlar:
- * - Arama API'si Meilisearch tabanli; TMDB basliklariyla eslestirme yapilir.
- * - Master m3u8 URL'si gecicidir (timestamp imzali), her istekte yenilenir.
- * - m3u8 isteminde Referer (eksenload.top) zorunludur (Cloudflare).
- * - Altyazilar JW Player tracks alanindan alinir (VTT).
- * - Hermes uyumlu: async/await kullanildi (diger providerlarla ayni).
+ * - Eski filmekseni.vip domain'i kapandi; .cc/.org -> .pro yonlendiriyor.
+ * - Buffer/URL/onSettings disinda ES5 + Promise; base64 cozucu elle yazildi.
+ * - m3u8 URL'si imzali/gecicidir, her istekte yenilenir.
+ * - m3u8 isteminde Referer (eksenload.top) gereklidir.
  */
 (function () {
   "use strict";
 
-  var BASE = "https://filmekseni.vip";
+  var BASE = "https://filmekseni.pro";
   var EMBED_BASE = "https://eksenload.top";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_KEY_FALLBACK = "439c478a771f35c05022f9feabcca01c";
   var TIMEOUT = 20000;
+  var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   var MEDIA_HEADERS = { "User-Agent": UA, Referer: EMBED_BASE + "/" };
+  var TAG = "[filmekseni]";
+  var seriesSlugCache = null;
 
   // ---------------------------------------------------------------- helpers
 
@@ -77,13 +79,6 @@
       .replace(/&amp;/gi, "&");
   }
 
-  function cleanText(html) {
-    return decodeEntities(String(html || "")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim());
-  }
-
   var TR_MAP = {
     "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ğ": "g", "Ğ": "g",
     "ü": "u", "Ü": "u", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
@@ -100,10 +95,7 @@
       var ch = src.charAt(i);
       ascii += TR_MAP[ch] !== undefined ? TR_MAP[ch] : ch;
     }
-    return ascii
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+    return ascii.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   }
 
   function norm(text) {
@@ -112,6 +104,46 @@
       .replace(/[^a-z0-9çğıöşü]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  // Buffer yok; Nuvio/QuickJS icinelle base64 + UTF-8 cozucu.
+  function decodeBase64(input) {
+    var s = String(input || "").replace(/\s/g, "");
+    var out = "", i = 0, e1, e2, e3, e4, ch3, ch4;
+    while (i < s.length) {
+      e1 = B64.indexOf(s.charAt(i++));
+      if (e1 < 0) break;
+      e2 = i < s.length ? B64.indexOf(s.charAt(i++)) : 64;
+      if (e2 < 0) break;
+      ch3 = i < s.length ? s.charAt(i++) : "=";
+      e3 = ch3 === "=" ? 64 : B64.indexOf(ch3);
+      ch4 = i < s.length ? s.charAt(i++) : "=";
+      e4 = ch4 === "=" ? 64 : B64.indexOf(ch4);
+      out += String.fromCharCode((e1 << 2) | (e2 >> 4));
+      if (e3 !== 64) {
+        out += String.fromCharCode(((e2 & 15) << 4) | (e3 >> 2));
+        if (e4 !== 64) out += String.fromCharCode(((e3 & 3) << 6) | e4);
+      }
+    }
+    return out;
+  }
+
+  function utf8Decode(binary) {
+    var out = "", i = 0, c, c2, c3;
+    while (i < binary.length) {
+      c = binary.charCodeAt(i++);
+      if (c < 0x80) {
+        out += String.fromCharCode(c);
+      } else if (c < 0xE0 && i < binary.length) {
+        c2 = binary.charCodeAt(i++);
+        out += String.fromCharCode(((c & 0x1F) << 6) | (c2 & 0x3F));
+      } else if (i + 1 < binary.length) {
+        c2 = binary.charCodeAt(i++);
+        c3 = binary.charCodeAt(i++);
+        out += String.fromCharCode(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
+      }
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------ TMDB
@@ -137,11 +169,10 @@
       }
 
       var year = String((isTv ? d.first_air_date : d.release_date) || "").slice(0, 4);
-
-      // Ingilizce basligi da ekle
-      var enUrl = "https://api.themoviedb.org/3/" + (isTv ? "tv" : "movie") + "/" + encodeURIComponent(tmdbId) +
+      var enUrl = "https://api.themoviedb.org/3/" + path + "/" + encodeURIComponent(tmdbId) +
         "?api_key=" + encodeURIComponent(apiKey) +
         "&language=en-US&append_to_response=alternative_titles";
+
       return fetchText(enUrl, { "User-Agent": UA, Accept: "application/json" }).then(function (enTxt) {
         if (enTxt) {
           var en;
@@ -158,12 +189,7 @@
             }
           }
         }
-        return {
-          title: main,
-          original: original,
-          alternatives: altTitles,
-          year: year
-        };
+        return { title: main, original: original, alternatives: altTitles, year: year };
       });
     });
   }
@@ -174,7 +200,7 @@
     var url = BASE + "/api/search?q=" + encodeURIComponent(query);
     return fetchJson(url, { "User-Agent": UA, Referer: BASE + "/", Accept: "application/json" })
       .then(function (d) {
-        if (!d || !d.data || !Array.isArray(d.data)) return [];
+        if (!d || !d.data || Object.prototype.toString.call(d.data) !== "[object Array]") return [];
         return d.data;
       });
   }
@@ -193,183 +219,200 @@
     return 4;
   }
 
-  function scoreItem(item, titles) {
+  function scoreItem(item, titles, isTv, year) {
+    // Tip ayrimi kritik: arama API'si dizi ararken film, film ararken dizi
+    // dondurebiliyor (orn. "Breaking Bad" -> "El Camino" filmi).
+    var type = item.contentableType || "";
+    if (isTv ? !/series/i.test(type) : !/movie/i.test(type)) return 0;
+
     var best = 0;
     for (var i = 0; i < titles.length; i++) {
-      var t = titles[i];
-      if (!t) continue;
-      var s = matchScore(item.title, t);
+      var s = matchScore(item.title, titles[i]);
       if (s > best) best = s;
     }
+    if (!best) return 0;
+    if (year && item.releaseYear && Math.abs(parseInt(item.releaseYear, 10) - parseInt(year, 10)) > 1) best -= 5;
     return best;
   }
 
-  function findResult(titles, isTv) {
-    var desiredType = isTv ? "App\\Models\\Series" : "App\\Models\\Movie";
+  // Arama API'sinde dizisi olmayan ama sitede bulunan yapimlar icin
+  // sitemap.series listesinden slug ile eslestirme (TMDB basliklari uzerinden).
+  function loadSeriesSlugs() {
+    if (seriesSlugCache) return Promise.resolve(seriesSlugCache);
+    return fetchText(BASE + "/sitemap.series.1.xml", { "User-Agent": UA }).then(function (xml) {
+      var out = [], re = /<loc>https:\/\/filmekseni\.pro\/dizi\/([a-z0-9-]+)\/?<\/loc>/gi, m;
+      while ((m = re.exec(xml || "")) !== null) {
+        if (out.indexOf(m[1]) === -1) out.push(m[1]);
+      }
+      seriesSlugCache = out;
+      return out;
+    }).catch(function () {
+      seriesSlugCache = [];
+      return [];
+    });
+  }
+
+  function findSeriesInSitemap(titles) {
+    return loadSeriesSlugs().then(function (slugs) {
+      var wanted = [];
+      for (var i = 0; i < titles.length; i++) {
+        var sl = slugify(titles[i]);
+        if (sl && wanted.indexOf(sl) === -1) wanted.push(sl);
+      }
+      var prefix = null;
+      for (var j = 0; j < slugs.length; j++) {
+        for (var k = 0; k < wanted.length; k++) {
+          if (slugs[j] === wanted[k]) return { title: titles[k], slug: "dizi/" + slugs[j] };
+          if (!prefix && slugs[j].indexOf(wanted[k]) === 0) {
+            prefix = { title: titles[k], slug: "dizi/" + slugs[j] };
+          }
+        }
+      }
+      return prefix;
+    });
+  }
+
+  function findResult(titles, isTv, year) {
     var best = null, bestScore = 0;
-    var ordered = titles.filter(Boolean).slice(0, 10);
+    var ordered = [];
+    for (var i = 0; i < titles.length && ordered.length < 10; i++) {
+      if (titles[i] && ordered.indexOf(titles[i]) === -1) ordered.push(titles[i]);
+    }
+
+    function consider(items) {
+      for (var i = 0; i < items.length; i++) {
+        var s = scoreItem(items[i], titles, isTv, year);
+        if (s > bestScore) { bestScore = s; best = items[i]; }
+      }
+    }
+
+    function finish() {
+      if (best && bestScore > 0) return Promise.resolve(best);
+      return isTv ? findSeriesInSitemap(titles) : Promise.resolve(null);
+    }
 
     function searchAll(idx) {
-      if (idx >= ordered.length) {
-        if (best) return Promise.resolve(best);
-        return prefixAll(0, null);
-      }
+      if (idx >= ordered.length) return prefixAll(0);
       return searchSite(ordered[idx]).then(function (items) {
-        var pool = items.filter(function (it) { return it.contentableType === desiredType; });
-        if (!pool.length) pool = items;
-        for (var i = 0; i < pool.length; i++) {
-          var s = scoreItem(pool[i], titles);
-          if (s > bestScore) { bestScore = s; best = pool[i]; }
-        }
-        if (bestScore >= 10) return Promise.resolve(best);
+        consider(items);
+        if (bestScore >= 10) return finish();
         return searchAll(idx + 1);
       }).catch(function () { return searchAll(idx + 1); });
     }
 
-    function prefixAll(pIdx, found) {
-      if (found) return Promise.resolve(found);
-      if (pIdx >= 2 || !ordered.length) return Promise.resolve(best);
-      var words = String(ordered[0] || "").split(/\s+/).filter(Boolean);
+    function prefixAll(pIdx) {
+      if (pIdx >= 2 || !ordered.length) return finish();
+      var words = String(ordered[0] || "").split(/\s+/);
       var prefix = null;
       if (pIdx === 0 && words.length > 2) prefix = words.slice(0, 3).join(" ");
       if (pIdx === 1 && words.length > 1) prefix = words.slice(0, 2).join(" ");
-      if (!prefix) return prefixAll(pIdx + 1, null);
+      if (!prefix) return prefixAll(pIdx + 1);
       return searchSite(prefix).then(function (items) {
-        var pool = items.filter(function (it) { return it.contentableType === desiredType; });
-        if (!pool.length) pool = items;
-        var localBest = null, localScore = 0;
-        for (var i = 0; i < pool.length; i++) {
-          var s = scoreItem(pool[i], titles);
-          if (s > localScore) { localScore = s; localBest = pool[i]; }
-        }
-        if (localBest && localScore > bestScore) { best = localBest; bestScore = localScore; }
-        if (bestScore >= 7) return Promise.resolve(best);
-        return prefixAll(pIdx + 1, null);
-      }).catch(function () { return prefixAll(pIdx + 1, null); });
+        consider(items);
+        return prefixAll(pIdx + 1);
+      }).catch(function () { return prefixAll(pIdx + 1); });
     }
 
     return searchAll(0);
   }
 
-  function getMoviePage(slug) {
-    var url = BASE + "/" + slug + "/";
-    return fetchText(url, { "User-Agent": UA, Referer: BASE + "/" });
+  function getPage(slug) {
+    return fetchText(BASE + "/" + slug + "/", { "User-Agent": UA, Referer: BASE + "/" });
+  }
+
+  // Dizi: /dizi/<slug>/sezon-S/bolum-E/ sayfasini acar.
+  // Istisna S/E yoksa dizi sayfasindaki mevcut bolum listesinden en yakinini secer.
+  function getEpisodeData(slug, s, e) {
+    var headers = { "User-Agent": UA, Referer: BASE + "/" };
+    return fetchText(BASE + "/" + slug + "/sezon-" + s + "/bolum-" + e + "/", headers)
+      .then(function (html) {
+        if (html && extractPlayerData(html)) return { html: html, season: s, episode: e };
+        return getPage(slug).then(function (seriesHtml) {
+          // Bazi dizilerde arama slug'i ile bolum slug'i farklidir
+          // (orn. the-last-of-us-izle -> /dizi/the-last-of-us/sezon-1/bolum-1).
+          // Bu yuzden tam href'yi kullanmak zorunludur.
+          var links = [], re = /href="([^"]*\/dizi\/[a-z0-9-]+\/sezon-(\d+)\/bolum-(\d+)[^"]*)"/gi, m;
+          while ((m = re.exec(seriesHtml || "")) !== null) {
+            var ls = parseInt(m[2], 10), le = parseInt(m[3], 10);
+            if (!ls || !le) continue;
+            var href = m[1].replace(/&amp;/g, "&");
+            if (!/^https?:\/\//i.test(href)) href = BASE + (href.charAt(0) === "/" ? "" : "/") + href;
+            links.push({ url: href, s: ls, e: le });
+          }
+          if (!links.length) return { html: html, season: s, episode: e };
+          var pick = links[0], bestDist = 1e9;
+          for (var i = 0; i < links.length; i++) {
+            var dist = links[i].s === s
+              ? Math.abs(links[i].e - e)
+              : 1000 + Math.abs(links[i].s - s) * 100 + links[i].e;
+            if (dist < bestDist) { bestDist = dist; pick = links[i]; }
+          }
+          console.log(TAG + " Bolum fallback: S" + pick.s + "E" + pick.e + " (istenen S" + s + "E" + e + ") -> " + pick.url);
+          return fetchText(pick.url, headers).then(function (h2) {
+            return { html: h2, season: pick.s, episode: pick.e };
+          });
+        });
+      });
   }
 
   function extractPlayerData(html) {
-    // x-data="videoPlayerData(JSON.parse('{...}'), 'key', [])"
     var m = html.match(/x-data="videoPlayerData\(JSON\.parse\('([^']+)'\)/);
     if (!m) return null;
     var encoded = m[1].replace(/\\u0022/g, '"').replace(/\\u0027/g, "'").replace(/\\\\/g, "\\");
-    try {
-      return JSON.parse(encoded);
-    } catch (e) {
-      return null;
-    }
+    try { return JSON.parse(encoded); } catch (e) { return null; }
   }
 
-  function atobSafe(input) {
-    var src = String(input || "").replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
-    while (src.length % 4) src += "=";
-    if (typeof atob === "function") {
-      try { return atob(src); } catch (e) {}
-    }
-    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    var out = "", acc = 0, bits = 0, i, value, ch;
-    for (i = 0; i < src.length; i++) {
-      ch = src.charAt(i);
-      if (ch === "=") break;
-      value = chars.indexOf(ch);
-      if (value < 0) continue;
-      acc = ((acc << 6) | value) & 0xFFFFFF;
-      bits += 6;
-      if (bits >= 8) {
-        bits -= 8;
-        out += String.fromCharCode((acc >> bits) & 255);
-        acc &= bits ? (1 << bits) - 1 : 0;
-      }
-    }
-    return out;
-  }
-
-  function base64Decode(input) {
-    return atobSafe(input);
-  }
-
-  function utf8Decode(bin) {
-    bin = String(bin || "");
-    try { return decodeURIComponent(escape(bin)); } catch (e) {}
-    var out = "", i = 0;
-    while (i < bin.length) {
-      var b = bin.charCodeAt(i++);
-      if (b < 0x80) out += String.fromCharCode(b);
-      else if (b < 0xE0) {
-        out += String.fromCharCode(((b & 0x1F) << 6) | (bin.charCodeAt(i++) & 0x3F));
-      } else if (b < 0xF0) {
-        out += String.fromCharCode(((b & 0x0F) << 12) | ((bin.charCodeAt(i++) & 0x3F) << 6) | (bin.charCodeAt(i++) & 0x3F));
-      } else {
-        var cp = ((b & 0x07) << 18) | ((bin.charCodeAt(i++) & 0x3F) << 12)
-          | ((bin.charCodeAt(i++) & 0x3F) << 6) | (bin.charCodeAt(i++) & 0x3F);
-        cp -= 0x10000;
-        out += String.fromCharCode(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
-      }
-    }
-    return out;
-  }
-
-  function decodeTemplate(template) {
-    try { return utf8Decode(base64Decode(template)); } catch (e) { return ""; }
-  }
-
-  function getEmbedUrl(playerData) {
+  function getEmbedUrls(playerData) {
     var dual = playerData && playerData.dual;
-    if (!dual || !dual.length) return null;
-    // Return all dual options (different languages/qualities)
-    return dual.map(function (item) {
-      var tmpl = decodeTemplate(item.template || "");
-      var url = "";
+    if (!dual || !dual.length) return [];
+    var out = [], seen = {};
+    for (var i = 0; i < dual.length && out.length < 4; i++) {
+      var item = dual[i];
+      var tmpl = utf8Decode(decodeBase64(item.template || ""));
       var uMatch = tmpl.match(/data-src="([^"]+)"/);
-      if (uMatch) {
-        url = uMatch[1].replace(/\{slug\}/g, item.service_slug || "").replace(/\{url\}/g, item.link || "");
-      }
+      if (!uMatch) continue;
+      var url = uMatch[1]
+        .replace(/\{slug\}/g, item.service_slug || "")
+        .replace(/\{url\}/g, item.link || "");
       if (url && !/^https?:\/\//i.test(url)) url = "https:" + url;
-      return {
+      if (!url || seen[url]) continue;
+      seen[url] = 1;
+      out.push({
         link: item.link,
-        serviceSlug: item.service_slug,
-        serviceName: item.service_name,
-        quality: item.quality,
+        serviceName: item.service_name || "",
+        note: item.note || "",
+        quality: item.quality || "",
         embedUrl: url
-      };
-    }).filter(function (o) { return o.embedUrl; });
+      });
+    }
+    return out;
   }
 
   function resolveStream(embedUrl) {
     return fetchText(embedUrl, { "User-Agent": UA, Referer: BASE + "/" })
       .then(function (html) {
         if (!html) return null;
-        // JW Player setup JSON: .setup(JSON.parse('{...}'))
         var m = html.match(/\.setup\(JSON\.parse\('([^']+)'\)\)/);
         if (!m) return null;
         var encoded = m[1].replace(/\\u0022/g, '"').replace(/\\\\\//g, "/").replace(/\\\\/g, "\\");
+        var config;
         try {
-          var config = JSON.parse(encoded);
+          config = JSON.parse(encoded);
         } catch (e) {
-          // try without extra unescaping
           try { config = JSON.parse(m[1]); } catch (e2) { return null; }
         }
         if (!config || !config.file) return null;
 
-        var subtitles = [];
-        if (Array.isArray(config.tracks)) {
+        var subtitles = [], langs = [];
+        if (Object.prototype.toString.call(config.tracks) === "[object Array]") {
           config.tracks.forEach(function (t) {
             if (!t || !t.file) return;
-            var label = t.label || "";
-            var fileLower = String(t.file || "").toLowerCase();
+            var fileLower = String(t.file).toLowerCase();
+            var label = String(t.label || "");
             var lang = "und";
-            if (/tur/i.test(fileLower)) lang = "tr";
-            else if (/eng/i.test(fileLower)) lang = "en";
-            else if (/tr/i.test(label)) lang = "tr";
-            else if (/en/i.test(label)) lang = "en";
+            if (/tur|_tr\b|\.tr\./i.test(fileLower) || /türk|turk|tr/i.test(label)) lang = "tr";
+            else if (/eng|_en\b|\.en\./i.test(fileLower) || /ingiliz|english|\ben\b/i.test(label)) lang = "en";
+            if (lang !== "und" && langs.indexOf(lang) === -1) langs.push(lang);
             subtitles.push({
               url: t.file,
               language: lang,
@@ -383,19 +426,18 @@
         return {
           url: config.file,
           subtitles: subtitles,
+          subtitleLangs: langs,
           image: config.image || "",
           qualityLabels: config.qualityLabels || {}
         };
       });
   }
 
-  function qualityFromLabels(qualityLabels, defaultQuality) {
-    if (!qualityLabels || typeof qualityLabels !== "object") return defaultQuality || "Auto";
-    var keys = Object.keys(qualityLabels);
-    if (!keys.length) return defaultQuality || "Auto";
-    // pick highest
+  function qualityFromLabels(qualityLabels, fallback) {
+    var keys = qualityLabels && typeof qualityLabels === "object" ? Object.keys(qualityLabels) : [];
+    if (!keys.length) return fallback || "Auto";
     var maxKey = keys.reduce(function (a, b) { return parseInt(a, 10) > parseInt(b, 10) ? a : b; });
-    return qualityLabels[maxKey] || defaultQuality || "Auto";
+    return qualityLabels[maxKey] || fallback || "Auto";
   }
 
   // -------------------------------------------------------------- getStreams
@@ -415,72 +457,71 @@
 
       var titles = [info.title, info.original].concat(info.alternatives || []);
       titles = titles.filter(function (t, i) { return t && titles.indexOf(t) === i; });
-
       console.log(tag + " Araniyor: " + titles.join(" | ") + (info.year ? " (" + info.year + ")" : ""));
 
-      return findResult(titles, isTv).then(function (result) {
+      return findResult(titles, isTv, info.year).then(function (result) {
         if (!result) {
           console.log(tag + " Eslesen sonuc bulunamadi");
           return [];
         }
-
         console.log(tag + " Bulundu: " + result.title + " (" + result.slug + ")");
 
-        var pageSlug = result.slug;
-        if (isTv) {
-          pageSlug = "dizi/" + result.slug + "/sezon-" + s + "/bolum-" + e;
-        }
-        return getMoviePage(pageSlug).then(function (html) {
-          if (!html) {
-            console.log(tag + " Sayfa alinamadi");
-            return [];
-          }
-
+        var pagePromise = isTv
+          ? getEpisodeData(result.slug, s, e)
+          : getPage(result.slug).then(function (html) { return { html: html, season: s, episode: e }; });
+        return pagePromise.then(function (page) {
+          var html = page.html;
+          if (!html) return [];
           var playerData = extractPlayerData(html);
           if (!playerData) {
             console.log(tag + " Oynatici verisi bulunamadi");
             return [];
           }
-
-          var embeds = getEmbedUrl(playerData);
+          var embeds = getEmbedUrls(playerData);
           if (!embeds.length) {
             console.log(tag + " Embed URL olusturulamadi");
             return [];
           }
 
-          // Use first embed (usually the best quality/language)
-          var embed = embeds[0];
-          console.log(tag + " Embed: " + embed.embedUrl);
+          function next(i, out) {
+            if (i >= embeds.length) return Promise.resolve(out);
+            var embed = embeds[i];
+            return resolveStream(embed.embedUrl).then(function (stream) {
+              if (stream) {
+                var quality = qualityFromLabels(stream.qualityLabels, embed.quality);
+                var hay = embed.serviceName + " " + embed.note;
+                var tags = [];
+                if (/dublaj|dual/i.test(hay)) tags.push("TR Dublaj");
+                if (stream.subtitleLangs.length) tags.push("Alt: " + stream.subtitleLangs.join("/"));
+                if (quality) tags.push(quality);
 
-          return resolveStream(embed.embedUrl).then(function (stream) {
-            if (!stream) {
-              console.log(tag + " Akis cozulumedi");
-              return [];
-            }
+                var display = info.title + (info.year ? " (" + info.year + ")" : "");
+                if (isTv) display += " S" + page.season + "E" + page.episode;
+                var title = display + (tags.length ? " [" + tags.join(" | ") + "]" : "");
 
-            var display = info.title + (info.year ? " (" + info.year + ")" : "");
-            if (isTv) display += " S" + s + "E" + e;
-
-            var quality = qualityFromLabels(stream.qualityLabels, embed.quality);
-            var title = "FilmEkseni - " + quality + " " + info.title + (isTv ? " S" + s + "E" + e : "");
-
-            var out = {
-              name: "FilmEkseni" + (quality ? " " + quality : ""),
-              title: title,
-              url: stream.url,
-              quality: quality || undefined,
-              isM3u8: true,
-              type: "hls",
-              language: "tr",
-              provider: "filmekseni",
-              headers: MEDIA_HEADERS,
-              subtitles: stream.subtitles || [],
-              behaviorHints: { bingeGroup: "filmekseni-" + result.slug }
-            };
-
-            console.log(tag + " Kaynak bulundu: 1 kaynak (" + quality + ")");
-            return [out];
-          });
+                out.push({
+                  name: "FilmEkseni " + (quality || ""),
+                  title: title,
+                  url: stream.url,
+                  quality: quality || undefined,
+                  isM3u8: true,
+                  type: "hls",
+                  language: "tr",
+                  provider: "filmekseni",
+                  headers: MEDIA_HEADERS,
+                  subtitles: stream.subtitles,
+                  behaviorHints: {
+                    bingeGroup: "filmekseni-" + result.slug + (isTv ? "-s" + page.season + "e" + page.episode : "")
+                  },
+                  _dub: /dublaj|dual/i.test(hay),
+                  _sub: stream.subtitleLangs.length > 0,
+                  _quality: quality
+                });
+              }
+              return next(i + 1, out);
+            });
+          }
+          return next(0, []);
         });
       });
     }).catch(function (err) {
@@ -489,9 +530,7 @@
     });
   }
 
-  function onSettings() {
-    return [];
-  }
+  function onSettings() { return []; }
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = { getStreams: getStreams, onSettings: onSettings };
