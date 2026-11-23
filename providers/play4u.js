@@ -12,7 +12,13 @@
  * Notlar:
  * - Play4u uses IMDb IDs (tt...) not TMDB IDs.
  * - m3u8_url is sealed (pa!~ prefix); unsealed with simple XOR.
+ * - The XOR key is published by the page as window.__PA_SEAL_KEY__; the
+ *   hardcoded value is only a fallback. A wrong key produces a garbled
+ *   "URL" and Nuvio then fails with "url using bad/illegal format".
  * - Unsealed URL requires Referer: https://play4u.org/
+ * - The CDN serves the HLS master as a .png file with image/png content
+ *   type. "?type=m3u8" is appended (the CDN ignores it) so players that
+ *   look at the URL instead of the payload treat it as HLS.
  * - Only 1080p+ content is returned (720p and below filtered out).
  * - Hermes uyumlu: async/await yok, yalnizca Promise zinciri.
  */
@@ -119,14 +125,28 @@
     return utf8Decode(bytes);
   }
 
-  function unseal(u) {
+  function unseal(u, key) {
     if (!u || typeof u !== "string") return u;
     if (u.indexOf("pa!~") !== 0) return u;
+    var sealKey = (typeof key === "string" && key) ? key : SEAL_KEY;
     var raw = urlSafeB64Decode(u.slice(4));
     if (!raw) return "";
     var o = "";
-    for (var i = 0; i < raw.length; i++) o += String.fromCharCode(raw.charCodeAt(i) ^ SEAL_KEY.charCodeAt(i % SEAL_KEY.length));
+    for (var i = 0; i < raw.length; i++) o += String.fromCharCode(raw.charCodeAt(i) ^ sealKey.charCodeAt(i % sealKey.length));
     return o;
+  }
+
+  // Bir bozuk anahtar, "https://" ile baslamayan anlamsiz bir metin uretir.
+  // Boyle bir degeri oynatciya vermek "url using bad/illegal format" hatasina
+  // yol acar; bu yuzden havuza girmeden once eleyelim.
+  function validStreamUrl(u) {
+    if (typeof u !== "string" || u.length < 16) return false;
+    if (!/^https?:\/\/[A-Za-z0-9.-]+(:\d+)?\//.test(u)) return false;
+    return !/[\x00-\x20\x7f-\uffff]/.test(u);
+  }
+
+  function asHlsUrl(u) {
+    return validStreamUrl(u) ? (u + (u.indexOf("?") < 0 ? "?type=m3u8" : "&type=m3u8")) : null;
   }
 
   // -------------------------------------------------------------- TMDB
@@ -170,6 +190,11 @@
     var m = String(html || "").match(/window\.__PA_PLAY__\s*=\s*(\{[\s\S]*?\});/);
     if (!m) return null;
     try { return JSON.parse(m[1]); } catch (e) { return null; }
+  }
+
+  function extractSealKey(html) {
+    var m = String(html || "").match(/window\.__PA_SEAL_KEY__\s*=\s*"([^"]+)"/);
+    return (m && m[1]) ? m[1] : SEAL_KEY;
   }
 
   function maxQualityFromPlay(play) {
@@ -242,16 +267,24 @@
           return [];
         }
 
-        // m3u8_url unseal
+        // m3u8_url unseal - sayfa anahtari birinci, sabit anahtar yedek
+        var sealKey = extractSealKey(html);
         var streams = play.streams || [];
         var out = [], seen = {};
         for (var i = 0; i < streams.length; i++) {
           var st = streams[i];
           if (!st || !st.m3u8_url) continue;
-          var unsealed = unseal(st.m3u8_url);
-          if (!unsealed) continue;
-          if (seen[unsealed]) continue;
-          seen[unsealed] = true;
+          var unsealed = unseal(st.m3u8_url, sealKey);
+          if (!validStreamUrl(unsealed) && sealKey !== SEAL_KEY) {
+            unsealed = unseal(st.m3u8_url, SEAL_KEY);
+          }
+          var streamUrl = asHlsUrl(unsealed);
+          if (!streamUrl) {
+            console.log(tag + " Gecersiz stream URL'si atlandi");
+            continue;
+          }
+          if (seen[streamUrl]) continue;
+          seen[streamUrl] = true;
 
           var langs = (st.languages || []).map(function (l) { return l.name; }).join(", ");
           var qs = (st.qualities || []).map(function (q) { return q.label; }).join(", ");
@@ -260,13 +293,13 @@
           out.push({
             name: "Play4u - " + maxQ + (langs ? " " + langs : ""),
             title: display + " | " + maxQ + (langs ? " | " + langs : "") + " [HLS]",
-            url: unsealed,
+            url: streamUrl,
             quality: maxQ,
             isM3u8: true,
             type: "hls",
             language: "en",
             provider: "play4u",
-            headers: { "User-Agent": UA, Referer: BASE + "/", Origin: BASE },
+            headers: { "User-Agent": UA, Referer: BASE + "/" },
             subtitles: [],
             behaviorHints: { bingeGroup: "play4u-" + tmdbId }
           });
