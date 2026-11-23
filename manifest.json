@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.3.83",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium sağlayıcıları",
+  "version": "2.3.84",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -405,27 +405,6 @@
       "contentLanguage": [
         "en"
       ]
-    },
-    {
-      "id": "hdfilmcehennemi",
-      "name": "HDFilmCehennemi",
-      "version": "1.2.0",
-      "description": "HDFilmCehennemi; çalışan mirror fallback (.land / v7.com / .nl), yıl doğrulamalı eşleşme, film + dizi, HLS (X-Sp kanıtlı), çok dilli VTT altyazı",
-      "filename": "providers/hdfilmcehennemi.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr",
-        "en"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.land&sz=128"
     },
     {
       "id": "dizibal",
