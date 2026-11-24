@@ -303,7 +303,7 @@
             type: "hls",
             language: "en",
             provider: "play4u",
-            headers: { "User-Agent": UA, Referer: BASE + "/" },
+            headers: { "User-Agent": UA, Referer: BASE + "/", Origin: BASE },
             subtitles: [],
             behaviorHints: { bingeGroup: "play4u-" + tmdbId }
           });
