@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.89",
+  "version": "2.3.90",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium, Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -445,26 +445,6 @@
         "tr"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=filmekseni.pro&sz=128"
-    },
-    {
-      "id": "fullhdfilmizlesene",
-      "name": "FullHDFilmizlesene",
-      "version": "1.0.9",
-      "description": "FullHDFilmizlesene.co - film ve dizi; HLS, Türkçe dublaj/altyazı",
-      "filename": "providers/fullhdfilmizlesene.js",
-      "supportedTypes": [
-        "movie"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=fullhdfilmizlesene.co&sz=128"
     },
     {
       "id": "dizifilm",
