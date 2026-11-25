@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.92",
+  "version": "2.3.93",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium, Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -112,20 +112,21 @@
     {
       "id": "vaplayer",
       "name": "VAplayer",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "filename": "providers/vaplayer.js",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "enabled": false,
+      "enabled": true,
       "hasSettings": false,
       "formats": [
         "m3u8"
       ],
       "contentLanguage": [
         "en"
-      ]
+      ],
+      "description": "VAplayer (vaplayer.ru / VidAPI embed); render -> apiToken -> source-api stream_urls HLS, film + dizi"
     },
     {
       "id": "moviesapi",
