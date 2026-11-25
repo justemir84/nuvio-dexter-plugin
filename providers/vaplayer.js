@@ -259,17 +259,68 @@
   // ----------------------------------------------------------- aciklama/siralama
 
   function parseRelease(s) {
-    try { s = decodeURIComponent(s); } catch (e) {}
-    s = " " + String(s || "").toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
-    var codec = /x265|hevc|h265|h\.265/.test(s) ? "HEVC x265" : (/x264|h264|h\.264|avc/.test(s) ? "H.264" : "");
-    var depth = /10bit|10 bit|hi10/.test(s) ? "10bit" : "";
-    var hdr = /dolby.?vision|\bdv\b|\bdovi\b/.test(s) ? "DV" : (/hdr10\+/.test(s) ? "HDR10+" : (/hdr10/.test(s) ? "HDR10" : (/hdr\b/.test(s) ? "HDR" : "")));
-    var audio = /truehd/.test(s) ? "TrueHD" : (/atmos/.test(s) ? "Atmos" : (/dts/.test(s) ? "DTS" : ""));
-    var ach = /ddp.?5\.1|dd.?5\.1|ac.?3|5\.1/.test(s) ? "5.1" : (/7\.1/.test(s) ? "7.1" : "");
-    var net = /\bnf\b|netflix/.test(s) ? "NF " : (/\bamzn\b|amazon/.test(s) ? "AMZN " : (/\batvp\b|apple/.test(s) ? "ATVP " : (/\bdsnp\b|disney/.test(s) ? "DSNP " : "")));
-    var src = /remux/.test(s) ? "REMUX" : (/blu.?ray/.test(s) ? "BluRay" : (/web.?dl/.test(s) ? "WEB-DL" : (/web.?rip/.test(s) ? "WEBRip" : (/\bhdtv\b/.test(s) ? "HDTV" : ""))));
-    var dual = /\bdual\b/.test(s) ? "Dual Audio" : "";
-    return { codec: codec, depth: depth, hdr: hdr, audio: (audio + (ach ? " " + ach : "")).trim(), src: (net + src).trim(), dual: dual };
+    var raw = String(s || "");
+    try { raw = decodeURIComponent(raw); } catch (e) {}
+    var low = " " + raw.toLowerCase().replace(/[^a-z0-9+.]+/g, " ") + " ";
+
+    var codec = /x265|hevc|h\s*\.?\s*265/.test(low) ? "HEVC/x265"
+      : (/x264|h\s*\.?\s*264|avc/.test(low) ? "H.264/x264"
+      : (/\bav1\b/.test(low) ? "AV1"
+      : (/\bxvid\b/.test(low) ? "XviD"
+      : (/\bdivx\b/.test(low) ? "DivX" : ""))));
+
+    var depth = /10\s*bit|hi10/.test(low) ? "10bit" : "";
+    var hdr = /dolby.?vision|\bdovi\b/.test(low) ? "DV"
+      : (/hdr10\+/.test(low) ? "HDR10+"
+      : (/hdr10/.test(low) ? "HDR10" : (/\bhdr\b/.test(low) ? "HDR" : "")));
+
+    var audio = /truehd/.test(low) && /atmos/.test(low) ? "TrueHD Atmos"
+      : (/truehd/.test(low) ? "TrueHD"
+      : (/atmos/.test(low) ? "Dolby Atmos"
+      : (/dts.?hd|dts.hd.ma/.test(low) ? "DTS-HD MA"
+      : (/dts/.test(low) ? "DTS"
+      : (/ddp|e.?ac.?3|dd.?plus/.test(low) ? "Dolby Digital+"
+      : (/dd\s*\.?\s*5|ac.?3|\bdd5/.test(low) ? "Dolby Digital"
+      : (/aac/.test(low) ? "AAC" : (/flac/.test(low) ? "FLAC" : ""))))))));
+
+    var ch = /7\s*\.?\s*1/.test(low) ? "7.1"
+      : (/5\s*\.?\s*1|5\.1ch/.test(low) ? "5.1" : (/2\s*\.?\s*0|stereo/.test(low) ? "2.0" : ""));
+    if (audio && ch) audio += " " + ch;
+    else if (!audio && ch) audio = ch + " audio";
+
+    var net = /\bnf\b|netflix/.test(low) ? "NF"
+      : (/\bamzn\b|amazon/.test(low) ? "AMZN"
+      : (/\batvp\b|apple/.test(low) ? "ATVP"
+      : (/\bdsnp\b|disney/.test(low) ? "DSNP" : "")));
+
+    var src = /remux/.test(low) ? "REMUX"
+      : (/blu.?ray|bdrip|brrip/.test(low) ? "BluRay"
+      : (/web.?dl/.test(low) ? "WEB-DL"
+      : (/web.?rip/.test(low) ? "WEBRip"
+      : (/\bhdtv\b/.test(low) ? "HDTV" : ""))));
+    if (net && src) src = net + " " + src;
+    else if (net) src = net;
+
+    var dual = /\bdual\b|\bdublaj\b/.test(low) ? "Dual Audio" : "";
+
+    var parts = [];
+    if (src) parts.push(src);
+    if (codec) parts.push(codec);
+    if (depth) parts.push(depth);
+    if (hdr) parts.push(hdr);
+    if (audio) parts.push(audio);
+    if (dual) parts.push(dual);
+
+    return {
+      quality: parseQuality(low),
+      codec: codec,
+      depth: depth,
+      hdr: hdr,
+      audio: audio,
+      src: src,
+      dual: dual,
+      label: parts.join(" ")
+    };
   }
 
   function parseQuality(v) {
@@ -513,15 +564,9 @@
           return stampHostTokens(urls.slice(0, MAX_MIRRORS), ctx.cfg.apiToken).then(function (stamped) {
             var data = j.data || {};
             var fileName = data.file_name || "";
-            var quality = parseQuality(fileName);
             var rel = parseRelease(fileName);
-            var extra = [];
-            if (rel.codec || rel.depth) extra.push((rel.codec + " " + rel.depth).trim());
-            var aura = (rel.hdr + " " + rel.audio).trim();
-            if (aura) extra.push(aura);
-            if (rel.dual) extra.push(rel.dual);
-            if (rel.src) extra.push(rel.src);
-            var codecShort = rel.codec === "HEVC x265" ? "HEVC" : rel.codec;
+            var quality = rel.quality || parseQuality(fileName);
+            var detail = rel.label ? (quality + " | " + rel.label) : quality;
             var display = data.title || "Video";
             if (type === "tv") display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
 
@@ -530,8 +575,8 @@
               if (!u) return;
               var mi = i === 0 ? "" : " (M" + (i + 1) + ")";
               out.push({
-                name: "VAplayer - " + quality + (codecShort ? " " + codecShort : "") + mi,
-                title: display + "\n" + quality + (extra.length ? " | " + extra.join(" | ") : "") + " [HLS · " + originOf(u) + "]",
+                name: "VAplayer - " + quality + (rel.label ? " " + rel.label : "") + mi,
+                title: display + "\n" + detail + " [HLS · " + originOf(u) + "]",
                 url: u,
                 quality: quality,
                 isM3u8: true,
