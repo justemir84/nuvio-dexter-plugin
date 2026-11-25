@@ -1,14 +1,23 @@
 /**
- * vaplayer - VAplayer provider for Nuvio (streamdata.vaplayer.ru)
- * Akis: TMDB id -> api.php -> file_name (kalite/codec) + stream_urls[] HLS master aynalari + vdrk altyazilar
- * stream_urls ayni dosyanin aynalaridir (dil farki yoktur); isim satirina codec,
- * baslik satirina ayna sunucusu yazilir ki secenekler ayirt edilebilsin.
- * Hermes-safe: Promise chains only, no deps.
+ * vaplayer - VAplayer provider for Nuvio (vaplayer.ru / VidAPI embed backend)
+ * Akis:
+ *   TMDB id -> https://vaplayer.ru/embed/{tv|movie}/... render -> CONFIG apiToken
+ *   -> https://streamdata.vaplayer.ru/api.php?type=<tv|movie>&tmdb=<id>[&season=&episode=]&stream_urls&api_token=..
+ *   -> { status_code, data: { stream_urls: [...] } } HLS master aynalari + file_name
+ * Notler:
+ *   - Eski akis (streamdata.vaplayer.ru/api.php?type=&tmdb=&season=&episode=) artik 404
+ *     donuyor; backend yeni token tabanli akise gecis yapti (render -> apiToken ->
+ *     stream_urls&api_token). Bu yuzden provider yeni akisi kullanir.
+ *   - Response: { status_code: "200", data: { stream_urls: [...], file_name: "..." } }
+ *   - stream_urls ayni dosyanin aynalari olabilir (dil farki yoktur); isim satiri
+ *     kalite/codec icerir, baslik satiri altyazi/sinif bilgisi icerir.
+ *   - Hermes-safe: Promise chains only, no deps.
  */
 (function () {
   "use strict";
 
-  var API = "https://streamdata.vaplayer.ru/api.php";
+  var EMBED_BASE = "https://vaplayer.ru";
+  var STREAM_DATA_API = "https://streamdata.vaplayer.ru/api.php";
   var SUBS = "https://sub.vdrk.site";
   var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
@@ -28,6 +37,19 @@
       if (timer) clearTimeout(timer);
       throw err;
     });
+  }
+
+  function fetchJson(url, options) {
+    return fetchTimeout(url, options).then(function (r) {
+      return r.json().catch(function () { return null; });
+    });
+  }
+
+  function fetchText(url, options) {
+    return fetchTimeout(url, options).then(function (r) {
+      if (!r.ok) return "";
+      return r.text();
+    }).catch(function () { return ""; });
   }
 
   function parseRelease(s) {
@@ -107,25 +129,53 @@
     }).catch(function () { return []; });
   }
 
+  // ------------------------------------------------------------ token + stream
+
+  function extractApiToken(html) {
+    var h = String(html || "");
+    var m = h.match(/"apiToken"\s*:\s*"([^"]*)"/);
+    if (!m) m = h.match(/apiToken["']?\s*[:=]\s*["']([^"']*)["']/i);
+    if (!m) m = h.match(/"token"\s*:\s*"([^"]*)"/);
+    if (!m) return "";
+    return String(m[1] || "").trim();
+  }
+
+  function fetchApiToken(type, tmdbId, season, episode) {
+    var path = type === "tv" ? "/embed/tv/" + tmdbId + "/" + (season || 1) + "/" + (episode || 1) : "/embed/movie/" + tmdbId;
+    var url = EMBED_BASE + path;
+    return fetchTimeout(url, { headers: { "User-Agent": UA, Accept: "text/html" } }).then(function (r) {
+      if (!r.ok) return "";
+      return r.text();
+    }).then(function (html) { return extractApiToken(html); }).catch(function () { return ""; });
+  }
+
+  function buildStreamDataUrl(type, tmdbId, season, episode, token) {
+    var qs = "type=" + type + "&tmdb=" + encodeURIComponent(tmdbId);
+    if (type === "tv") qs += "&season=" + (season || 1) + "&episode=" + (episode || 1);
+    qs += "&stream_urls&api_token=" + encodeURIComponent(token || "");
+    return STREAM_DATA_API + "?" + qs;
+  }
+
+  // --------------------------------------------------------------- getStreams
+
   function getStreams(tmdbId, mediaType, season, episode) {
     var tag = "[VAplayer]";
     var type = mediaType === "tv" ? "tv" : "movie";
+    var s = season || 1;
+    var e = episode || 1;
     console.log(tag + " Fetching " + mediaType + " " + tmdbId);
-    var info = null, subs = [];
-    return tmdbLookup(tmdbId, type).then(function (d) {
-      info = d;
-      return fetchSubs(tmdbId, type, season, episode);
-    }).then(function (ss) {
-      subs = ss;
-      var url = API + "?type=" + type + "&tmdb=" + encodeURIComponent(tmdbId);
-      if (type === "tv") url += "&season=" + (season || 1) + "&episode=" + (episode || 1);
-      return fetchTimeout(url, { headers: { "User-Agent": UA, Accept: "application/json" } }).then(function (r) {
-        if (!r.ok) throw new Error("api " + r.status);
-        return r.json();
-      });
-    }).then(function (d) {
-      var data = d && d.data;
-      var urls = (data && Array.isArray(data.stream_urls)) ? data.stream_urls : [];
+
+    return fetchApiToken(type, tmdbId, s, e).then(function (token) {
+      var url = buildStreamDataUrl(type, tmdbId, s, e, token);
+      return fetchJson(url, { headers: { "User-Agent": UA, Accept: "application/json" } });
+    }).then(function (j) {
+      if (!j) { console.log(tag + " Stream API yanit vermedi"); return []; }
+      if (j.status_code && String(j.status_code) !== "200") {
+        console.log(tag + " Stream API " + j.status_code + " " + (j.error || ""));
+        return [];
+      }
+      var data = j.data || {};
+      var urls = data.stream_urls || [];
       if (!urls.length) { console.log(tag + " No sources"); return []; }
       var fileName = data.file_name || "";
       var quality = parseQuality(fileName);
@@ -137,35 +187,34 @@
       if (rel.dual) extra.push(rel.dual);
       if (rel.src) extra.push(rel.src);
       extra = extra.join(" | ");
-      // Isim satiri: kalite + codec (varsa) -> "VAplayer - 1080p H.264"
       var codecShort = rel.codec === "HEVC x265" ? "HEVC" : rel.codec;
-      var langs = subs.map(function (x) { return String(x.lang || "").replace(/\s*\d+$/, "").trim(); })
-        .filter(function (v, i, a) { return v && a.indexOf(v) === i; });
-      var subLangs = langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : "");
-      var display = (info && info.title ? info.title : (data.title || "Video")) + (info && info.year ? " (" + info.year + ")" : "");
-      if (type === "tv") {
-        var s = season || 1, e = episode || 1;
-        display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
-      }
+
       var out = [];
       urls.slice(0, MAX_MIRRORS).forEach(function (u, i) {
-        if (!u || typeof u !== "string") return;
+        var u2 = typeof u === "string" ? u : (u && u.url);
+        if (!u2) return;
         var mi = i === 0 ? "" : " (M" + (i + 1) + ")";
-        var host = hostOf(u);
+        var host = hostOf(u2);
         out.push({
           name: "VAplayer - " + quality + (codecShort ? " " + codecShort : "") + mi,
-          title: display + "\n" + quality + (extra ? " | " + extra : "") + " [HLS" + (host ? " · " + host : "") + "]" + (subLangs ? " | " + subLangs : ""),
-          url: u,
+          title: (data.title || "Video") + "\n" + quality + (extra ? " | " + extra : "") + " [HLS" + (host ? " · " + host : "") + "]",
+          url: u2,
           quality: quality,
           isM3u8: true,
           type: "hls",
           headers: { "User-Agent": UA },
-          subtitles: subs,
+          subtitles: [],
           provider: "vaplayer"
         });
       });
       console.log(tag + " Found " + out.length + " streams");
       return qSort(out);
+    }).then(function (out) {
+      if (!out || !out.length) return out;
+      return fetchSubs(tmdbId, mediaType, s, e).then(function (subs) {
+        for (var i = 0; i < out.length; i++) out[i].subtitles = subs;
+        return out;
+      });
     }).catch(function (err) {
       console.log(tag + " Error: " + (err && err.message));
       return [];
