@@ -9,6 +9,9 @@
  *   5) data.stream_urls metin ise ChaCha20 ile sifreli -> wasm.php modulunden anahtar
  *      cikarilir ve saf JS ile cozulur (WebAssembly/Hermes gerektirmez)
  *   6) her stream host'u /generate.php?api_token=... ile ?token= alir
+ *   7) iOS UA ile API'den /pli/ URL'leri alinir: token playlist icinde tasinir,
+ *      boylece Nuvio oynaticisi alt playlist/segment'lere ekstra token basmak
+ *      zorunda kalmaz (/pl/ static URL'leri her istekte token ister).
  *
  * Eski API (api.php?type=&tmdb=...&season=&episode=) artik 404 donuyor;
  * token'i vaplayer.ru/embed sayfasinda aramak da artik 403 veriyor cunku token
@@ -22,7 +25,10 @@
   var EMBED_BASE = "https://vaplayer.ru";
   var STREAM_DATA_API = "https://streamdata.vaplayer.ru/api.php";
   var SUBS = "https://sub.vdrk.site";
-  var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+  // iOS UA: API /pl/ yerine /pli/ (govde tokenli) URL'leri donduruyor.
+  // /pl/ URL'leri master + alt playlist + segment her istekte token ister;
+  // Nuvio'nun HLS oynaticisi bunu yapmadigi icin /pli/ sart.
+  var UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
   var TIMEOUT = 12000;
   var MAX_MIRRORS = 3;
   var B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -94,6 +100,16 @@
     });
     parts.push(key + "=" + encodeURIComponent(value));
     return base + "?" + parts.join("&");
+  }
+
+  // /pl/  = static playlist, token MUST be stamped on every playlist/segment.
+  // /pli/ = body-token playlist, only the master needs ?token= (Nuvio-safe).
+  function toBodyTokenUrl(u) {
+    return String(u || "").replace(/\/pl(?:c)?\//, "/pli/");
+  }
+
+  function toBodyTokenUrls(list) {
+    return (list || []).map(toBodyTokenUrl);
   }
 
   // ------------------------------------------------------- base64 / utf8 yardim
@@ -556,9 +572,12 @@
           throw new Error("Stream API " + j.status_code + " " + (j.error || ""));
         }
         return decodeStreamUrls(j, ctx.playerUrl).then(function (urls) {
+          // Her ihtimale karsi /pl/ veya /plc/ gelirse /pli/'ye cevir:
+          // alt playlist/segment'ler token'i govdeden okur, Nuvio ekstra
+          // token damgalamasi yapmak zorunda kalmaz.
+          urls = toBodyTokenUrls(urls);
           if (!urls.length && Array.isArray(j.data && j.data.cast_urls)) {
-            // Son care: sifresiz cast URL'leri (oyunici bazen calisir).
-            urls = j.data.cast_urls.slice();
+            urls = toBodyTokenUrls(j.data.cast_urls);
           }
           if (!urls.length) throw new Error("Kaynak yok");
           return stampHostTokens(urls.slice(0, MAX_MIRRORS), ctx.cfg.apiToken).then(function (stamped) {
