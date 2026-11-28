@@ -491,7 +491,8 @@
       console.log(TAG + " API status=" + (j && j.status_code) +
         " refreshVa=" + (ctx.cfg && ctx.cfg.refreshVa ? "VAR" : "YOK") +
         " stream_urls=" + (j && j.data ? typeof j.data.stream_urls : "YOK") +
-        " wasm=" + (j && j.va && j.va.wasm_url ? "VAR" : "YOK"));
+
+         " wasm=" + (j && j.va && j.va.wasm_url ? "VAR" : "YOK"));
       if (j && (String(j.status_code) === "403" || String(j.status_code) === "429") && !retry && ctx.cfg.refreshVa) {
         // Token tek kullanilik: player sayfasini yeniden render edip yeni token al.
         var url = ctx.playerUrl;
@@ -677,3 +678,4 @@
     this.onSettings = onSettings;
   }
 })();
+
