@@ -22,6 +22,7 @@
 (function () {
   "use strict";
 
+  var TAG = "[VAplayer]";
   var EMBED_BASE = "https://vaplayer.ru";
   var STREAM_DATA_API = "https://streamdata.vaplayer.ru/api.php";
   var SUBS = "https://sub.vdrk.site";
@@ -253,6 +254,7 @@
     var segs = wasmDataSegments(wasmBuffer).filter(function (s) {
       return s.bytes.length >= 32 && s.off >= 0;
     });
+    console.log(TAG + " decode raw=" + raw.length + " segs=" + segs.length);
     for (var i = 0; i < segs.length; i++) {
       for (var j = i + 1; j < segs.length; j++) {
         var a = segs[i].bytes, b = segs[j].bytes;
@@ -265,10 +267,12 @@
         }
         var plain = chachaDecrypt(words, raw);
         if (/^https?:\/\//.test(plain.trim())) {
+          console.log(TAG + " decode OK pair " + i + "/" + j);
           return plain.split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return /^https?:\/\//i.test(s); });
         }
       }
     }
+    console.log(TAG + " decode FAIL - no key pair produced http");
     return [];
   }
 
@@ -398,15 +402,30 @@
     return null;
   }
 
+  // Site CONFIG'i const/let/var/window. ile uretebilir; hepsini dene.
+  function findConfig(html) {
+    var markers = ["const CONFIG", "let CONFIG", "var CONFIG", "window.CONFIG", "CONFIG ="];
+    for (var i = 0; i < markers.length; i++) {
+      var cfg = extractConfig(html, markers[i]);
+      if (cfg && cfg.apiToken) return cfg;
+    }
+    return null;
+  }
+
   function fetchPlayerConfig(playerUrl, referer) {
     return fetchHtml(playerUrl, { headers: { "User-Agent": UA, Accept: "text/html", Referer: referer } }).then(function (html) {
-      var cfg = extractConfig(html, "const CONFIG");
-      if (cfg && cfg.apiToken) return cfg;
+      var cfg = findConfig(html);
       // Eski tip player: CONFIG yok, token dogrudan gomulu olabilir.
-      var m = html.match(/"apiToken"\s*:\s*"([^"]*)"/);
-      if (m) return { apiToken: m[1], streamDataApiUrl: STREAM_DATA_API };
-      return null;
-    }).catch(function () { return null; });
+      if (!cfg) {
+        var m = html.match(/"apiToken"\s*:\s*"([^"]*)"/);
+        if (m) cfg = { apiToken: m[1], streamDataApiUrl: STREAM_DATA_API };
+      }
+      console.log(TAG + " player CONFIG=" + (cfg ? "OK" : "YOK") +
+        " apiToken=" + (cfg && cfg.apiToken ? "VAR" : "YOK") +
+        " refreshVa=" + (cfg && cfg.refreshVa ? "VAR" : "YOK") +
+        " htmlLen=" + html.length);
+      return cfg;
+    }).catch(function (e) { console.log(TAG + " player fetch ERROR " + (e && e.message)); return null; });
   }
 
   function fetchPlayerUrl(type, tmdbId, season, episode) {
@@ -417,7 +436,7 @@
     var headers = { "User-Agent": UA, Accept: "text/html" };
     return fetchHtml(wrapperUrl, { headers: headers }).then(function (html) {
       // Once eski akis: token dogrudan embed sayfasinda (hala mumkun olabilir).
-      var old = extractConfig(html, "const CONFIG");
+      var old = findConfig(html);
       var tokenMatch = html.match(/"apiToken"\s*:\s*"([^"]*)"/);
       if (!old && tokenMatch) {
         var apiMatch = html.match(/"streamDataApiUrl"\s*:\s*"([^"]*)"/);
@@ -426,6 +445,7 @@
       if (old && old.apiToken) return { cfg: old, playerUrl: wrapperUrl, wrapperUrl: wrapperUrl };
 
       var m = html.match(/data-api="([^"]+)"/);
+      console.log(TAG + " wrapper OK data-api=" + (m ? m[1] : "YOK") + " htmlLen=" + html.length);
       var apiPath = m ? m[1].replace(/&amp;/g, "&") : "/embed/va_src.php?path=" + encodeURIComponent(path);
       return fetchJson(EMBED_BASE + apiPath, {
         headers: { "User-Agent": UA, Accept: "application/json", Referer: wrapperUrl, "X-Requested-With": "XMLHttpRequest" }
@@ -460,6 +480,10 @@
 
   function getStreamData(ctx, type, tmdbId, season, episode, retry) {
     return requestStreamData(ctx, type, tmdbId, season, episode).then(function (j) {
+      console.log(TAG + " API status=" + (j && j.status_code) +
+        " refreshVa=" + (ctx.cfg && ctx.cfg.refreshVa ? "VAR" : "YOK") +
+        " stream_urls=" + (j && j.data ? typeof j.data.stream_urls : "YOK") +
+        " wasm=" + (j && j.va && j.va.wasm_url ? "VAR" : "YOK"));
       if (j && (String(j.status_code) === "403" || String(j.status_code) === "429") && !retry && ctx.cfg.refreshVa) {
         // Token tek kullanilik: player sayfasini yeniden render edip yeni token al.
         var url = ctx.playerUrl;
@@ -528,6 +552,7 @@
     origins.forEach(function (origin) {
       chain = chain.then(function (acc) {
         return fetchHostToken(origin, apiToken).then(function (tk) {
+          console.log(TAG + " host token " + origin + " = " + (tk ? "OK" : "BOS"));
           urls.forEach(function (u, i) {
             if (originOf(u) === origin && !acc[i]) acc[i] = applyHostToken(u, tk);
           });
@@ -558,8 +583,8 @@
 
   // --------------------------------------------------------------- getStreams
 
-  function getStreams(tmdbId, mediaType, season, episode) {
-    var tag = "[VAplayer]";
+  function getStreams(tmdbId, mediaType, season, episode, settings) {
+    var tag = TAG;
     var type = mediaType === "tv" ? "tv" : "movie";
     var s = season || 1;
     var e = episode || 1;
@@ -572,6 +597,8 @@
           throw new Error("Stream API " + j.status_code + " " + (j.error || ""));
         }
         return decodeStreamUrls(j, ctx.playerUrl).then(function (urls) {
+          console.log(tag + " decoded urls=" + urls.length +
+            (urls.length ? " first=" + String(urls[0]).slice(0, 80) : ""));
           // Her ihtimale karsi /pl/ veya /plc/ gelirse /pli/'ye cevir:
           // alt playlist/segment'ler token'i govdeden okur, Nuvio ekstra
           // token damgalamasi yapmak zorunda kalmaz.
@@ -622,9 +649,12 @@
     });
   }
 
+  function onSettings() { return []; }
+
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { getStreams: getStreams };
+    module.exports = { getStreams: getStreams, onSettings: onSettings };
   } else {
     this.getStreams = getStreams;
+    this.onSettings = onSettings;
   }
 })();
