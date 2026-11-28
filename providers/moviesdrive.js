@@ -17,9 +17,20 @@
     return fetchTimeout(DOMAINS_URL, { headers: headers(BASE + "/", "application/json") }, 7000).then(function (res) {
       return res.json().then(function (data) {
         if (data && data.moviesdrive) {
-          domainCache.url = data.moviesdrive;
-          domainCache.ts = now;
-          console.log("[MoviesDrive] Domain (remote): " + domainCache.url);
+          var candidate = String(data.moviesdrive).replace(/\/+$/, "");
+          // Domain'in gercekten erisilebilir oldugunu dogrula (mobilde DNS/redirect farklari).
+          return fetchTimeout(candidate + "/wp-json/wp/v2/posts?per_page=1&_fields=link", {
+            headers: headers(candidate + "/", "application/json, text/plain, */*")
+          }, 7000).then(function (r) {
+            if (!r.ok) return domainCache.url;
+            return r.text().then(function (t) {
+              try { if (!Array.isArray(JSON.parse(t))) return domainCache.url; } catch (e) { return domainCache.url; }
+              domainCache.url = candidate;
+              domainCache.ts = now;
+              console.log("[MoviesDrive] Domain (remote): " + domainCache.url);
+              return domainCache.url;
+            });
+          }).catch(function () { return domainCache.url; });
         }
         return domainCache.url;
       });
