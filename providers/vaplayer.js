@@ -30,6 +30,14 @@
   // /pl/ URL'leri master + alt playlist + segment her istekte token ister;
   // Nuvio'nun HLS oynaticisi bunu yapmadigi icin /pli/ sart.
   var UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+  // Nuvio PluginRuntime plugin sonucundaki `headers` alanini okur ve
+  // behaviorHints.proxyHeaders.request olarak oynaticiya tasir. Tarayici
+  // video.src ile ayni basliklari gonderdigi icin bunlari da ekliyoruz.
+  var PLAYBACK_HEADERS = {
+    "User-Agent": UA,
+    "Accept": "application/vnd.apple.mpegurl,application/x-mpegURL,*/*",
+    "Referer": EMBED_BASE + "/"
+  };
   var TIMEOUT = 12000;
   var MAX_MIRRORS = 3;
   var B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -575,7 +583,11 @@
     }).then(function (d) {
       var out = [];
       (Array.isArray(d) ? d : []).forEach(function (s) {
-        if (s && s.file) out.push({ url: s.file, lang: s.label || s.language || "Unknown" });
+        if (s && s.file) out.push({
+          url: s.file,
+          language: s.label || s.language || "Unknown",
+          name: s.label || s.language || "Subtitle"
+        });
       });
       return out;
     }).catch(function () { return []; });
@@ -627,7 +639,14 @@
                 quality: quality,
                 isM3u8: true,
                 type: "hls",
-                headers: { "User-Agent": UA },
+                headers: PLAYBACK_HEADERS,
+                // Uzaktan addon yolu `headers` alanini okumaz; sadece
+                // behaviorHints.proxyHeaders.request alanini kullanir. Iki
+                // yolun da ayni basliklari almasi icin ikisini de veriyoruz.
+                behaviorHints: {
+                  notWebReady: true,
+                  proxyHeaders: { request: PLAYBACK_HEADERS }
+                },
                 subtitles: [],
                 provider: "vaplayer"
               });
