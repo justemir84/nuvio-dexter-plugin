@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.4.8",
+  "version": "2.4.9",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium sağlayıcıları",
   "scrapers": [
     {
@@ -81,7 +81,7 @@
         "movie",
         "tv"
       ],
-      "enabled": true,
+      "enabled": false,
       "hasSettings": false,
       "formats": [
         "m3u8"
@@ -97,7 +97,7 @@
       "description": "Mapple ikinci kaynak havuzu (Hera, Apollo, Hermes vb.)",
       "filename": "providers/mapple2.js",
       "supportedTypes": ["movie", "tv"],
-      "enabled": true,
+      "enabled": false,
       "hasSettings": false,
       "formats": ["m3u8"],
       "contentLanguage": ["en"]
