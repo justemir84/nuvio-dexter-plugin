@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.4.9",
+  "version": "2.4.10",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium sağlayıcıları",
   "scrapers": [
     {
@@ -341,7 +341,7 @@
     {
       "id": "moviesdrive",
       "name": "MoviesDrive",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "description": "MoviesDrive arşivi; HubCloud üzerinden R2 doğrudan MKV, film + dizi",
       "filename": "providers/moviesdrive.js",
       "supportedTypes": [
