@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.97",
+  "version": "2.3.98",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium, Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -265,7 +265,7 @@
     {
       "id": "vixsrc",
       "name": "VixSrc",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "İtalyanca/İngilizce çift sesli HLS; 6+ dilde VTT altyazı",
       "filename": "providers/vixsrc.js",
       "supportedTypes": [
