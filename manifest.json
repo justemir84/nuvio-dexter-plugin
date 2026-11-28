@@ -1,7 +1,7 @@
 {
   "name": "Justelemir",
-  "version": "2.4.0",
-  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
+  "version": "2.4.1",
+  "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium sağlayıcıları",
   "scrapers": [
     {
       "id": "dexterpw",
@@ -18,7 +18,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
@@ -38,7 +38,7 @@
     {
       "id": "yts",
       "name": "YTS",
-      "version": "1.0.8",
+      "version": "1.2.0",
       "description": "YTS torrent provider (magnet, debrid gerektirir)",
       "filename": "providers/yts.js",
       "supportedTypes": [
@@ -101,24 +101,6 @@
       "hasSettings": false,
       "formats": ["m3u8"],
       "contentLanguage": ["en"]
-    },
-    {
-      "id": "atlantic",
-      "name": "Atlantic",
-      "version": "1.0.6",
-      "filename": "providers/atlantic.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": false,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "en"
-      ]
     },
     {
       "id": "vaplayer",
@@ -276,7 +258,7 @@
     {
       "id": "vixsrc",
       "name": "VixSrc",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "İtalyanca/İngilizce çift sesli HLS; 6+ dilde VTT altyazı",
       "filename": "providers/vixsrc.js",
       "supportedTypes": [
@@ -342,7 +324,7 @@
         "movie",
         "tv"
       ],
-      "enabled": true,
+      "enabled": false,
       "hasSettings": false,
       "formats": [
         "mkv",
@@ -387,7 +369,7 @@
         "movie",
         "tv"
       ],
-      "enabled": true,
+      "enabled": false,
       "hasSettings": true,
       "formats": [
         "mp4",
@@ -419,46 +401,6 @@
       ]
     },
     {
-      "id": "hdfilmcehennemi",
-      "name": "HDFilmCehennemi",
-      "version": "1.1.1",
-      "description": "HDFilmCehennemi; çalışan mirror fallback (.land / v7 / .nl), yıl doğrulamalı eşleşme, film + dizi, HLS (X-Sp kanıtlı), çok dilli VTT altyazı",
-      "filename": "providers/hdfilmcehennemi.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr",
-        "en"
-      ]
-    },
-    {
-      "id": "hdfilmcehennemiland",
-      "name": "Land",
-      "version": "1.0.3",
-      "description": "HDFilmCehennemi.land - film ve dizi; HLS, Türkçe dublaj/altyazı",
-      "filename": "providers/land.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.land&sz=128"
-    },
-    {
       "id": "dizibal",
       "name": "DiziBal",
       "description": "dizibal.org - film ve diziler icin HLS kaynaklari (Turkce dublaj/altyazi)",
@@ -485,29 +427,9 @@
       "logo": "https://www.google.com/s2/favicons?domain=filmekseni.pro&sz=128"
     },
     {
-      "id": "fullhdfilmizlesene",
-      "name": "FullHDFilmizlesene",
-      "version": "1.0.9",
-      "description": "FullHDFilmizlesene.co - film ve dizi; HLS, Türkçe dublaj/altyazı",
-      "filename": "providers/fullhdfilmizlesene.js",
-      "supportedTypes": [
-        "movie"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "contentLanguage": [
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=fullhdfilmizlesene.co&sz=128"
-    },
-    {
       "id": "dizifilm",
       "name": "DiziFilm",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "Dizifilm.life; film ve dizi, Vidmixi HLS, Türkçe dublaj/altyazı",
       "filename": "providers/dizifilm.js",
       "supportedTypes": [
@@ -565,27 +487,6 @@
         "en"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=diziyou.love&sz=128"
-    },
-    {
-      "id": "netmirror",
-      "name": "NetMirror",
-      "description": "NetMirror - Netflix/Prime/Hotstar/Disney HLS kaynakları, çoklu ses (TR dublaj dahil) + çoklu altyazı",
-      "version": "1.0.0",
-      "filename": "providers/netmirror.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": false,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "en",
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=netmirror.one&sz=128"
     },
     {
       "id": "anihub",
@@ -666,48 +567,6 @@
         "tr"
       ],
       "logo": "https://www.google.com/s2/favicons?domain=anizium.co&sz=128"
-    },
-    {
-      "id": "vidly",
-      "name": "Vidly",
-      "version": "1.0.0",
-      "description": "Vidly.pro - film, dizi ve anime embed oynatıcı; TMDB/AniList ID ile, 4K'ya kadar",
-      "filename": "providers/vidly.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "mp4"
-      ],
-      "contentLanguage": [
-        "en",
-        "tr"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=vidly.pro&sz=128"
-    },
-    {
-      "id": "play4u",
-      "name": "Play4u",
-      "version": "1.0.6",
-      "description": "Play4u.org - film ve dizi; 1080p+ HLS, çoklu ses (Hindi/English), IMDb ID ile",
-      "filename": "providers/play4u.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "enabled": true,
-      "hasSettings": false,
-      "formats": [
-        "m3u8"
-      ],
-      "contentLanguage": [
-        "en",
-        "hi"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=play4u.org&sz=128"
     }
 
   ]
