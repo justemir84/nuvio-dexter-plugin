@@ -299,11 +299,9 @@
   //   -> GET ready_url page (/id/, "file ready") -> POST /fetch/
   //   -> 302 Location = direct file (googleusercontent)
   function resolveSkydrop(skyUrl) {
-    var origin;
-    try {
-      var u = new URL(skyUrl);
-      origin = u.protocol + "//" + u.host;
-    } catch (e) { return Promise.resolve(null); }
+    var om = String(skyUrl || "").match(/^(https?:\/\/[^\/]+)/i);
+    var origin = om ? om[1] : "";
+    if (!origin) return Promise.resolve(null);
     var jar = {};
     var landingUrl = skyUrl;
     function storeCookie(c) {
