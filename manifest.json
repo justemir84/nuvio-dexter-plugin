@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.3.100",
+  "version": "2.4.0",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, Atlantic, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, HDFilmCehennemi, Land, DiziBal, FilmEkseni, FullHDFilmizlesene, DiziFilm, DiziMom, JustFlix, NetMirror, AniHub, justanime, Animexe, Anizium, Vidly ve Play4u sağlayıcıları",
   "scrapers": [
     {
@@ -123,7 +123,7 @@
     {
       "id": "vaplayer",
       "name": "VAplayer",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "filename": "providers/vaplayer.js",
       "supportedTypes": [
         "movie",
