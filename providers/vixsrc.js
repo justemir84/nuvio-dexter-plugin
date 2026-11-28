@@ -1,8 +1,8 @@
 /**
  * vixsrc - VixSrc (vixsrc.to) saglayicisi - Nuvio
  * Akis: TMDB -> /api/movie/{id} | /api/tv/{id}/{s}/{e} (Referer sart) -> {src:"/embed/..."}
- *   -> embed sayfasi: window.masterPlaylist {token, expires, url}
- *   -> playlist/{id}?b=1&token=...&expires=...&h=1&lang=xx -> master m3u8
+ *   -> embed sayfasi: window.masterPlaylist {params:{token,expires,asn}, url}
+ *   -> playlist/{id}?token=...&expires=...&lang=xx -> master m3u8
  *      (480p/720p/1080p varyantlari + cok dilli ses gruplari)
  *   -> TYPE=SUBTITLES satirlarindaki m3u8'lerden .vtt adresleri cikarilir.
  * Not: playlist token'i ~60 gun gecerli; medya istekleri Referer istemez (yine de gonderilir).
@@ -77,7 +77,7 @@
   function parseEmbed(html) {
     var i = String(html || "").indexOf("masterPlaylist");
     var seg = i >= 0 ? String(html).slice(i, i + 700) : "";
-    return { url: grab(seg, "url"), token: grab(seg, "token"), expires: grab(seg, "expires") };
+    return { url: grab(seg, "url"), token: grab(seg, "token"), expires: grab(seg, "expires"), asn: grab(seg, "asn") };
   }
 
   function parseSubTracks(master) {
@@ -150,65 +150,66 @@
     var pageUrl = isTv ? SITE + "/tv/" + tmdbId + "/" + s + "/" + e : SITE + "/movie/" + tmdbId;
     var apiUrl = SITE + "/api/" + (isTv ? "tv/" + tmdbId + "/" + s + "/" + e : "movie/" + tmdbId);
     var display = "";
+    var tmdbPromise = tmdbLookup(tmdbId, isTv);
 
-    return pAll([
-      fetchTimeout(apiUrl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: pageUrl } })
-        .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
-      tmdbLookup(tmdbId, isTv)
-    ]).then(function (res) {
-      var j = (res[0] && res[0].ok) ? res[0].v : null;
-      var info = (res[1] && res[1].ok) ? res[1].v : null;
-      if (info) {
-        display = info.title || info.name || "";
-        var y = String(info.release_date || info.first_air_date || "").slice(0, 4);
-        if (display && y) display += " (" + y + ")";
-      }
-      if (!display) display = "TMDB " + tmdbId;
-      if (isTv) display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
-      if (!j || !j.src) return { streams: [] };
-      var embedUrl = j.src.indexOf("http") === 0 ? j.src : SITE + j.src;
-      var lang = (embedUrl.match(/lang=([a-z]{2})/) || [])[1] || "en";
-      return fetchTimeout(embedUrl, { headers: { "User-Agent": UA, Accept: "text/html", Referer: pageUrl } })
-        .then(function (r) { return r.ok ? r.text() : ""; }, function () { return ""; })
-        .then(function (html) {
-          var mp = parseEmbed(html);
-          if (!mp.url) return { streams: [] };
-          var sep = mp.url.indexOf("?") >= 0 ? "&" : "?";
-          var playlistUrl = mp.url + sep + "token=" + mp.token + "&expires=" + mp.expires + "&h=1&lang=" + lang;
-          return fetchTimeout(playlistUrl, { headers: { "User-Agent": UA, Accept: "*/*", Referer: embedUrl } })
-            .then(function (r) { return r.ok ? r.text() : ""; }, function () { return ""; })
-            .then(function (master) {
-              if (!master || master.indexOf("#EXTM3U") !== 0) return { streams: [] };
-              var maxH = 0;
-              (master.match(/RESOLUTION=\d+x(\d+)/g) || []).forEach(function (rs) {
-                var h = Number((rs.match(/(\d+)$/) || [])[1]) || 0;
-                if (h > maxH) maxH = h;
+    return fetchTimeout(apiUrl, { headers: { "User-Agent": UA, Accept: "application/json", Referer: pageUrl } })
+      .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })
+      .then(function (j) {
+        if (!j || !j.src) return { streams: [] };
+        var embedUrl = j.src.indexOf("http") === 0 ? j.src : SITE + j.src;
+        var lang = (embedUrl.match(/lang=([a-z]{2})/) || [])[1] || "en";
+        return fetchTimeout(embedUrl, { headers: { "User-Agent": UA, Accept: "text/html", Referer: pageUrl } })
+          .then(function (r) { return r.ok ? r.text() : ""; }, function () { return ""; })
+          .then(function (html) {
+            var mp = parseEmbed(html);
+            if (!mp.url) return { streams: [] };
+            var sep = mp.url.indexOf("?") >= 0 ? "&" : "?";
+            var playlistUrl = mp.url + sep + "token=" + encodeURIComponent(mp.token) + "&expires=" + encodeURIComponent(mp.expires);
+            if (mp.asn) playlistUrl += "&asn=" + encodeURIComponent(mp.asn);
+            playlistUrl += "&lang=" + encodeURIComponent(lang);
+            return fetchTimeout(playlistUrl, { headers: { "User-Agent": UA, Accept: "*/*", Referer: embedUrl } })
+              .then(function (r) { return r.ok ? r.text() : ""; }, function () { return ""; })
+              .then(function (master) {
+                if (!master || master.indexOf("#EXTM3U") !== 0) return { streams: [] };
+                var maxH = 0;
+                (master.match(/RESOLUTION=\d+x(\d+)/g) || []).forEach(function (rs) {
+                  var h = Number((rs.match(/(\d+)$/) || [])[1]) || 0;
+                  if (h > maxH) maxH = h;
+                });
+                var q = qualityFromHeight(maxH);
+                var vtag = masterCodec(master);
+                var audios = parseAudioTracks(master).slice(0, 4);
+                return pAll(parseSubTracks(master).slice(0, MAX_SUBS).map(subVttUrl)).then(function (subsRes) {
+                  var subs = subsRes.filter(function (x) { return x.ok && x.v; }).map(function (x) { return x.v; });
+                  var langs = subs.map(function (x) { return x.lang; });
+                  var parts = [q + (vtag ? " " + vtag : "") + " [HLS]"];
+                  if (audios.length) parts.push("ses: " + audios.join(", "));
+                  if (langs.length) parts.push("altyazı: " + langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : ""));
+                  return tmdbPromise.then(function (info) {
+                    if (info) {
+                      display = info.title || info.name || "";
+                      var y = String(info.release_date || info.first_air_date || "").slice(0, 4);
+                      if (display && y) display += " (" + y + ")";
+                    }
+                    if (!display) display = "TMDB " + tmdbId;
+                    if (isTv) display += " S" + (s < 10 ? "0" + s : s) + "E" + (e < 10 ? "0" + e : e);
+                    var stream = {
+                      name: "VixSrc - " + q + (vtag ? " " + vtag : ""),
+                      title: display + "\n" + parts.join(" | "),
+                      url: playlistUrl,
+                      quality: q,
+                      isM3u8: true,
+                      type: "hls",
+                      headers: { Referer: SITE + "/", "User-Agent": UA },
+                      subtitles: subs,
+                      provider: "vixsrc"
+                    };
+                    return { streams: [stream] };
+                  });
+                });
               });
-              var q = qualityFromHeight(maxH);
-              var vtag = masterCodec(master);
-              var audios = parseAudioTracks(master).slice(0, 4);
-              return pAll(parseSubTracks(master).slice(0, MAX_SUBS).map(subVttUrl)).then(function (subsRes) {
-                var subs = subsRes.filter(function (x) { return x.ok && x.v; }).map(function (x) { return x.v; });
-                var langs = subs.map(function (x) { return x.lang; });
-                var parts = [q + (vtag ? " " + vtag : "") + " [HLS]"];
-                if (audios.length) parts.push("ses: " + audios.join(", "));
-                if (langs.length) parts.push("altyazı: " + langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : ""));
-                var stream = {
-                  name: "VixSrc - " + q + (vtag ? " " + vtag : ""),
-                  title: display + "\n" + parts.join(" | "),
-                  url: playlistUrl,
-                  quality: q,
-                  isM3u8: true,
-                  type: "hls",
-                  headers: { Referer: SITE + "/", "User-Agent": UA },
-                  subtitles: subs,
-                  provider: "vixsrc"
-                };
-                return { streams: [stream] };
-              });
-            });
-        });
-    }).then(function (payload) {
+          });
+      }).then(function (payload) {
       var out = (payload && payload.streams) || [];
       out.sort(function (a, b) { return qRank(b.quality) - qRank(a.quality); });
       console.log(tag + " Found " + out.length + " streams");
