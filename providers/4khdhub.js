@@ -359,7 +359,11 @@ function extractHubCloud(hubCloudUrl, baseMeta) {
         });
       }
     });
-    // Calisan linkler oncelikli; yoksa pixel/10Gbps yedek olarak dondurulur.
+    // Mobilde acilmayan redirect/HubCloud sayfalari yerine dogrudan dosya linklerini tercih et.
+    var directResults = results.filter(function (r) {
+      return /r2\.dev|workers\.dev|googleusercontent|fsl|pixeldrain|gdrive|dropbox/i.test(r.url || "");
+    });
+    if (directResults.length) return directResults;
     if (results.length) return results;
     return pixelResults;
   });
