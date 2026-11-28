@@ -634,11 +634,12 @@
               if (!u) return;
               var mi = i === 0 ? "" : " (M" + (i + 1) + ")";
               out.push({
-                name: "VAplayer - " + quality + (rel.label ? " " + rel.label : "") + mi,
+                name: "VAplayer - " + quality + (rel.label ? " " + rel.label : "") + " (Harici oynatıcıda açın)" + mi,
                 title: display + "\n" + detail + " [HLS · " + originOf(u) + "]",
                 url: u,
                 quality: quality,
-                isM3u8: true,
+                 size: detail + " [HLS]",
+                 isM3u8: true,
                 type: "hls",
                 headers: PLAYBACK_HEADERS,
                 // Uzaktan addon yolu `headers` alanini okumaz; sadece
@@ -678,4 +679,9 @@
     this.onSettings = onSettings;
   }
 })();
+
+
+
+
+
 
