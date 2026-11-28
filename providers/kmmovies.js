@@ -15,7 +15,7 @@
   "use strict";
 
   // Domain değişirse SADECE bu satırı değiştir — dosyanın geri kalanı otomatik uyum sağlar.
-  var SITE_DOMAIN = "kmmovies.quest";
+  var SITE_DOMAIN = "zm1.kmmovies.bond";
   var BASE = "https://" + SITE_DOMAIN;
   var SITE_RE = SITE_DOMAIN.replace(/\./g, "\\.");
   var TMDB_KEY = "90b2cae8d7161e8ba0f3836240d7d352";
@@ -161,7 +161,7 @@
           out.push({ title: decodeEntities(m[1]), url: m[2] });
         }
         if (out.length) return out;
-        var re2 = /<a[^>]+href="(https:\/\/kmmovies\.quest\/[^"]+\/)"[^>]*aria-label="([^"]+)"/gi;
+        var re2 = new RegExp("<a[^>]+href=\"(https://" + SITE_RE + "/[^\"]+/)\"[^>]*aria-label=\"([^\"]+)\"", "gi");
         while ((m = re2.exec(html)) !== null) {
           out.push({ title: decodeEntities(m[2]), url: m[1] });
         }
