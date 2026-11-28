@@ -993,8 +993,6 @@
       isM3u8: false,
       provider: "moviesdrive",
       type: "direct",
-      headers: { "User-Agent": UA, "Referer": BASE + "/" },
-      behaviorHints: { notWebReady: true },
       subtitles: []
     };
   }
