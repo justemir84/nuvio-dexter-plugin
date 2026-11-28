@@ -8,11 +8,28 @@
   "use strict";
 
   // MoviesDrive alan adi sik degisiyor. Ilk calisan adres otomatik secilir.
-  var BASE = "https://new5.moviesdrive.beer";
+  var BASE = "https://new5.moviesdrive.cyou";
+  var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
+  var domainCache = { url: BASE, ts: 0 };
+  function fetchLatestDomain() {
+    var now = Date.now();
+    if (now - domainCache.ts < 600000) return Promise.resolve(domainCache.url);
+    return fetchTimeout(DOMAINS_URL, { headers: headers(BASE + "/", "application/json") }, 7000).then(function (res) {
+      return res.json().then(function (data) {
+        if (data && data.moviesdrive) {
+          domainCache.url = data.moviesdrive;
+          domainCache.ts = now;
+          console.log("[MoviesDrive] Domain (remote): " + domainCache.url);
+        }
+        return domainCache.url;
+      });
+    }).catch(function () { return domainCache.url; });
+  }
   var BASE_CANDIDATES = [
     BASE,
+    "https://new5.moviesdrive.cyou",
+    "https://moviesdrives.bid",
     "https://new1.moviesdrive.cyou",
-    "https://new4.moviesdrive.beer",
     "https://new6.moviesdrive.beer",
     "https://new7.moviesdrive.beer",
     "https://new8.moviesdrive.beer",
@@ -117,34 +134,41 @@
   function resolveBase() {
     if (baseReady) return Promise.resolve(BASE);
 
-    var chain = Promise.resolve(null);
-    BASE_CANDIDATES.forEach(function (candidate) {
-      chain = chain.then(function (found) {
-        if (found) return found;
-        var url = candidate + "/wp-json/wp/v2/posts?per_page=1&_fields=link";
-        return fetchTimeout(url, {
-          headers: headers(candidate + "/", "application/json, text/plain, */*")
-        }, 7000).then(function (res) {
-          return res.text().then(function (text) {
-            var data = null;
-            try { data = JSON.parse(text); } catch (e) { return null; }
-            if (!Array.isArray(data)) return null;
-            var link = data[0] && data[0].link;
-            var origin = originOf(res.url) || originOf(link) || candidate;
-            if (!origin) return null;
-            BASE = origin;
-            baseReady = true;
-            console.log("[MoviesDrive] Base " + BASE);
-            return BASE;
-          });
-        }).catch(function () { return null; });
+    return fetchLatestDomain().then(function (remote) {
+      if (remote) {
+        BASE = remote.replace(/\/+$/, "");
+        baseReady = true;
+        console.log("[MoviesDrive] Base (remote) " + BASE);
+        return BASE;
+      }
+      var chain = Promise.resolve(null);
+      BASE_CANDIDATES.forEach(function (candidate) {
+        chain = chain.then(function (found) {
+          if (found) return found;
+          var url = candidate + "/wp-json/wp/v2/posts?per_page=1&_fields=link";
+          return fetchTimeout(url, {
+            headers: headers(candidate + "/", "application/json, text/plain, */*")
+          }, 7000).then(function (res) {
+            return res.text().then(function (text) {
+              var data = null;
+              try { data = JSON.parse(text); } catch (e) { return null; }
+              if (!Array.isArray(data)) return null;
+              var link = data[0] && data[0].link;
+              var origin = originOf(res.url) || originOf(link) || candidate;
+              if (!origin) return null;
+              BASE = origin;
+              baseReady = true;
+              console.log("[MoviesDrive] Base " + BASE);
+              return BASE;
+            });
+          }).catch(function () { return null; });
+        });
       });
-    });
-
-    return chain.then(function (found) {
-      if (found) return found;
-      console.log("[MoviesDrive] Base fallback " + BASE);
-      return BASE;
+      return chain.then(function (found) {
+        if (found) return found;
+        console.log("[MoviesDrive] Base fallback " + BASE);
+        return BASE;
+      });
     });
   }
 
