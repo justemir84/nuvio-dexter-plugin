@@ -994,6 +994,7 @@
       provider: "moviesdrive",
       type: "direct",
       headers: { "User-Agent": UA, "Referer": BASE + "/" },
+      behaviorHints: { notWebReady: true },
       subtitles: []
     };
   }
