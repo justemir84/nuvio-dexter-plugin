@@ -183,7 +183,7 @@
                   var subs = subsRes.filter(function (x) { return x.ok && x.v; }).map(function (x) { return x.v; });
                   var langs = subs.map(function (x) { return x.lang; });
                   var parts = [q + (vtag ? " " + vtag : "") + " [HLS]"];
-                  if (audios.length) parts.push("ses: " + audios.join(", "));
+                  if (audios.length) parts.push("Audio: " + audios.join(", "));
                   if (langs.length) parts.push("altyazı: " + langs.slice(0, 6).join(", ") + (langs.length > 6 ? " +" + (langs.length - 6) : ""));
                   return tmdbPromise.then(function (info) {
                     if (info) {
@@ -198,6 +198,7 @@
                       title: display + "\n" + parts.join(" | "),
                       url: playlistUrl,
                       quality: q,
+                      language: audios.length ? "Audio: " + audios.join(", ") : undefined,
                       isM3u8: true,
                       type: "hls",
                       headers: { Referer: SITE + "/", "User-Agent": UA },
