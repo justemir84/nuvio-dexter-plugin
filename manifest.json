@@ -1,6 +1,6 @@
 {
   "name": "Justelemir",
-  "version": "2.4.3",
+  "version": "2.4.4",
   "description": "Dexter.pw, KMMovies, YTS, VidCloud, Mapple, Mapple 2, VAplayer, MoviesAPI, PopWatch, Vidlove, VidRift, VidBolt, ThugTV, 123Movies, VixSrc, VidRock, 4KHDHub, 4KHD Club, MoviesDrive, UHDMovies, FrameX TV, DiziBal, FilmEkseni, DiziFilm, DiziMom, JustFlix, AniHub, justanime, Animexe, Anizium sağlayıcıları",
   "scrapers": [
     {
@@ -18,7 +18,7 @@
     {
       "id": "kmmovies",
       "name": "KMMovies",
-      "version": "1.2.7",
+      "version": "1.2.8",
       "filename": "providers/kmmovies.js",
       "supportedTypes": [
         "movie",
